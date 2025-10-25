@@ -1,9 +1,8 @@
-/* frontend/style.css - Complete styles for both pages */
+/* frontend/style.css - Dark Gradient Theme for Synthezia Editor */
 
 /* ==========================================
-   EDITOR PAGE STYLES (Light theme top bar + Dark theme beat maker)
+   GENERAL RESET
    ========================================== */
-
    * {
     margin: 0;
     padding: 0;
@@ -11,20 +10,24 @@
   }
   
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
-    background: #1a1a2e;
-    color: #eee;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f1116;
+    color: #e5e7eb;
     min-height: 100vh;
   }
   
-  /* Editor Top Bar (Google Docs style - Light theme) */
+  /* ==========================================
+     EDITOR TOP BAR (Dark Gradient)
+     ========================================== */
   .editor-topbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 12px 24px;
-    background: #ffffff;
-    border-bottom: 1px solid #e5e7eb;
+    background: linear-gradient(90deg, #1a1d23, #121419);
+    border-bottom: 1px solid #2a2e37;
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
     margin-bottom: 20px;
   }
   
@@ -35,42 +38,41 @@
   }
   
   .back-btn {
-    background: transparent;
-    border: none;
-    color: #4B5563;
+    background: #1a1d23;
+    border: 1px solid #2a2e37;
+    color: #e5e7eb;
     font-size: 14px;
     cursor: pointer;
     padding: 8px 12px;
     border-radius: 6px;
-    transition: background 0.2s;
+    transition: all 0.2s;
     font-weight: 500;
   }
   
   .back-btn:hover {
-    background: #f3f4f6;
+    border-color: #3b82f6;
   }
   
   .project-name-input {
-    border: none;
+    border: 1px solid #2a2e37;
     font-size: 18px;
     font-weight: 600;
-    color: #1F2937;
-    background: transparent;
+    color: #e5e7eb;
+    background: #1a1d23;
     padding: 8px 12px;
     border-radius: 6px;
-    transition: background 0.2s;
+    transition: all 0.2s;
     min-width: 200px;
   }
   
-  .project-name-input:hover {
-    background: #f3f4f6;
-  }
-  
+  .project-name-input:hover,
   .project-name-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 6px rgba(59, 130, 246, 0.4);
     outline: none;
-    background: #f3f4f6;
   }
   
+  /* Right side */
   .editor-topbar-right {
     display: flex;
     align-items: center;
@@ -78,7 +80,7 @@
   }
   
   .share-btn {
-    background: #3B82F6;
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6);
     color: white;
     border: none;
     padding: 8px 16px;
@@ -86,58 +88,42 @@
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: opacity 0.2s;
   }
   
   .share-btn:hover {
-    background: #2563EB;
+    opacity: 0.9;
   }
   
   .user-count {
-    background: #f3f4f6;
+    background: #1a1d23;
     padding: 6px 12px;
     border-radius: 12px;
     font-size: 13px;
-    color: #4B5563;
+    color: #9ca3af;
     font-weight: 500;
+    border: 1px solid #2a2e37;
   }
   
-  /* Main Container (Dark theme) */
+  /* ==========================================
+     MAIN CONTAINER
+     ========================================== */
   .container {
     max-width: 1400px;
     margin: 0 auto;
     padding: 20px;
   }
   
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 30px;
-    padding-bottom: 20px;
-    border-bottom: 2px solid #16213e;
-  }
-  
-  h1 {
-    font-size: 2rem;
-    color: #00d9ff;
-  }
-  
-  .user-info {
-    background: #16213e;
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 0.9rem;
-  }
-  
-  /* Controls */
+  /* ==========================================
+     CONTROLS
+     ========================================== */
   .controls {
     display: flex;
     gap: 15px;
     align-items: center;
     margin-bottom: 30px;
     padding: 20px;
-    background: #16213e;
+    background: linear-gradient(145deg, #1c1f26, #121419);
     border-radius: 10px;
     flex-wrap: wrap;
   }
@@ -153,24 +139,27 @@
   }
   
   .btn--primary {
-    background: #e94560;
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6);
     color: white;
   }
   
   .btn--primary:hover {
-    background: #c23550;
+    opacity: 0.9;
     transform: translateY(-2px);
   }
   
   .btn--secondary {
-    background: #0f3460;
-    color: white;
+    background: #1a1d23;
+    color: #e5e7eb;
+    border: 1px solid #2a2e37;
   }
   
   .btn--secondary:hover {
-    background: #082440;
+    border-color: #3b82f6;
+    background: #1c1f26;
   }
   
+  /* BPM Control */
   .bpm-control {
     display: flex;
     align-items: center;
@@ -180,14 +169,16 @@
   
   .bpm-control label {
     font-weight: 600;
-    color: #eee;
+    color: #e5e7eb;
   }
   
   #bpm {
     width: 150px;
   }
   
-  /* Sequencer */
+  /* ==========================================
+     SEQUENCER
+     ========================================== */
   .sequencer {
     display: flex;
     gap: 15px;
@@ -207,9 +198,9 @@
     display: flex;
     align-items: center;
     font-weight: 600;
-    color: #e94560;
+    color: #3b82f6;
     padding: 0 15px;
-    background: #16213e;
+    background: linear-gradient(145deg, #1c1f26, #121419);
     border-radius: 8px;
     min-width: 80px;
   }
@@ -227,22 +218,22 @@
     width: 100%;
     min-width: 40px;
     height: 50px;
-    background: #16213e;
-    border: 2px solid #0f3460;
+    background: linear-gradient(145deg, #1a1d23, #121419);
+    border: 2px solid #2a2e37;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s;
   }
   
   .beat-cell:hover {
-    background: #1f4068;
+    background: #3b82f6/10;
     transform: scale(1.05);
   }
   
   .beat-cell.active {
-    background: #e94560;
-    border-color: #e94560;
-    box-shadow: 0 0 20px rgba(233, 69, 96, 0.5);
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+    border-color: #3b82f6;
+    box-shadow: 0 0 20px rgba(59,130,246,0.5);
   }
   
   .beat-cell.playing {
@@ -254,13 +245,16 @@
     50% { transform: scale(1.1); }
   }
   
-  /* Status */
+  /* ==========================================
+     STATUS
+     ========================================== */
   .status {
     text-align: center;
     padding: 15px;
-    background: #16213e;
+    background: linear-gradient(145deg, #1c1f26, #121419);
     border-radius: 8px;
     font-size: 0.9rem;
+    color: #9ca3af;
   }
   
   #connection-status.connected {
@@ -271,7 +265,9 @@
     color: #ff4444;
   }
   
-  /* Responsive Design */
+  /* ==========================================
+     RESPONSIVE DESIGN
+     ========================================== */
   @media (max-width: 768px) {
     .editor-topbar {
       flex-direction: column;
