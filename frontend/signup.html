@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Ensures proper rendering and touch zooming on mobile devices -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up</title>
+    
+    <!-- 1. Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. Load Inter font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* 3. Set Inter as the default font */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* 4. Style for select dropdown arrows (Tailwind doesn't style these by default) */
+        select {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            padding-right: 2.5rem;
+        }
+    </style>
+    <script>
+        // Backend API configuration
+        const BACKEND_URL = 'http://localhost:1234';
+        window.AUTH_API = {
+            signup: `${BACKEND_URL}/api/auth/signup`,
+        };
+    </script>
+</head>
+<body class="bg-gray-900">
+
+    <!-- Main container: centers the form vertically and horizontally -->
+    <div class="flex min-h-screen flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        
+        <!-- Form wrapper: sets max width and spacing for all content -->
+        <div class="w-full max-w-sm space-y-6">
+            
+            <!-- Logo -->
+            <div class="flex justify-center">
+                <span class="text-2xl font-bold tracking-tight text-white">
+                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-white">
+                        <!-- Logo Icon -->
+                        <svg class="h-5 w-5" fill="none" stroke-width="2.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"></path>
+                        </svg>
+                    </span>
+                    MÜSE
+                </span>
+            </div>
+
+            <!-- Sign Up Form -->
+            <form id="signup-form" class="space-y-5 pt-8" action="#" method="POST">
+                <!-- Message Display -->
+                <div id="message" class="hidden rounded-md p-3 text-sm"></div>
+                
+                <!-- Email Input -->
+                <div>
+                    <label for="email-address" class="block text-sm font-medium text-gray-300">
+                        Sign up with email
+                    </label>
+                    <div class="mt-1">
+                        <input id="email-address" name="email" type="email" autocomplete="email" required
+                            class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-3 text-white placeholder-gray-500 shadow-sm transition-colors focus:border-purple-500 focus:outline-none focus:ring-purple-500 sm:text-sm"
+                            placeholder="Enter your email">
+                    </div>
+                </div>
+
+                <!-- Password Input -->
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-300">
+                        Create a password
+                    </label>
+                    <div class="mt-1">
+                        <input id="password" name="password" type="password" autocomplete="new-password" required
+                            class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-3 text-white placeholder-gray-500 shadow-sm transition-colors focus:border-purple-500 focus:outline-none focus:ring-purple-500 sm:text-sm"
+                            placeholder="Enter your password">
+                    </div>
+                    <p class="mt-2 text-xs text-gray-400">At least 8 characters with 1 letter and number.</p>
+                </div>
+
+                <!-- Date of Birth -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-300">
+                        Date of birth
+                    </label>
+                    <div class="mt-1 flex space-x-3">
+                        <!-- Month Dropdown -->
+                        <div class="w-1/2">
+                            <label for="month" class="sr-only">Month</label>
+                            <select id="month" name="month" required
+                                class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-3 text-gray-300 shadow-sm transition-colors focus:border-purple-500 focus:outline-none focus:ring-purple-500 sm:text-sm">
+                                <option value="">Month</option>
+                                <option value="01">January</option>
+                                <option value="02">February</option>
+                                <option value="03">March</option>
+                                <option value="04">April</option>
+                                <option value="05">May</option>
+                                <option value="06">June</option>
+                                <option value="07">July</option>
+                                <option value="08">August</option>
+                                <option value="09">September</option>
+                                <option value="10">October</option>
+                                <option value="11">November</option>
+                                <option value="12">December</option>
+                            </select>
+                        </div>
+                        <!-- Day Input -->
+                        <div class="w-1/4">
+                            <label for="day" class="sr-only">Day</label>
+                            <input type="text" name="day" id="day" required maxlength="2"
+                                class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-3 text-center text-white placeholder-gray-500 shadow-sm transition-colors focus:border-purple-500 focus:outline-none focus:ring-purple-500 sm:text-sm"
+                                placeholder="DD">
+                        </div>
+                        <!-- Year Input -->
+                        <div class="w-1/4">
+                             <label for="year" class="sr-only">Year</label>
+                            <input type="text" name="year" id="year" required maxlength="4"
+                                class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-3 text-center text-white placeholder-gray-500 shadow-sm transition-colors focus:border-purple-500 focus:outline-none focus:ring-purple-500 sm:text-sm"
+                                placeholder="YYYY">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sign Up Button -->
+                <div>
+                    <button type="submit"
+                        class="flex w-full justify-center rounded-full border border-transparent bg-purple-700 px-4 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 mt-2">
+                        Sign up
+                    </button>
+                </div>
+            </form>
+
+            <!-- Log In Link -->
+            <p class="mt-6 text-center text-sm text-gray-400">
+                Already have an account?
+                <a href="login.html" class="font-medium text-purple-600 transition-colors hover:text-purple-500">
+                    Log in.
+                </a>
+            </p>
+
+            <!-- Legal Text -->
+            <div class="space-y-4 pt-4">
+                 <p class="text-center text-xs text-gray-400">
+                    By signing up, you agree to MÜSE's
+                    <a href="#" class="font-medium text-purple-600 hover:text-purple-500">
+                        Terms of Use.
+                    </a>
+                </p>
+                <p class="text-center text-xs text-gray-400">
+                    You understand that we may send you marketing communications, which you can choose to unsubscribe in your personal account settings. To learn more about how MÜSE collects, uses, shares, and protects your personal data, refer to our
+                    <a href="#" class="font-medium text-purple-600 hover:text-purple-500">
+                        Privacy Policy.
+                    </a>
+                </D>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Helper function to display messages
+        function showMessage(text, isError = false) {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = text;
+            messageEl.className = `rounded-md p-3 text-sm ${isError ? 'bg-red-900/50 text-red-200 border border-red-700' : 'bg-green-900/50 text-green-200 border border-green-700'}`;
+            messageEl.classList.remove('hidden');
+        }
+
+        // Helper function to make API requests
+        async function apiRequest(url, data) {
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data),
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.message || 'Request failed');
+                }
+
+                return result;
+            } catch (error) {
+                throw new Error(error.message || 'Network error');
+            }
+        }
+
+        // Handle signup form submission
+        document.getElementById('signup-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById('email-address').value.trim();
+            const password = document.getElementById('password').value;
+            const month = document.getElementById('month').value;
+            const day = document.getElementById('day').value;
+            const year = document.getElementById('year').value;
+
+            // Validation
+            if (!email || !password) {
+                showMessage('Please fill in all required fields', true);
+                return;
+            }
+
+            if (password.length < 8) {
+                showMessage('Password must be at least 8 characters', true);
+                return;
+            }
+
+            if (!month || !day || !year) {
+                showMessage('Please enter your complete date of birth', true);
+                return;
+            }
+
+            // Validate password requirements (at least 1 letter and 1 number)
+            const hasLetter = /[a-zA-Z]/.test(password);
+            const hasNumber = /\d/.test(password);
+            if (!hasLetter || !hasNumber) {
+                showMessage('Password must contain at least 1 letter and 1 number', true);
+                return;
+            }
+
+            try {
+                showMessage('Creating your account...', false);
+
+                const result = await apiRequest(window.AUTH_API.signup, {
+                    email,
+                    password
+                });
+
+                showMessage('Account created successfully! Please check your email to verify your account.', false);
+
+                // Clear form
+                document.getElementById('signup-form').reset();
+
+                // Redirect to login page after 3 seconds
+                setTimeout(() => {
+                    window.location.href = 'login.html';
+                }, 3000);
+            } catch (error) {
+                showMessage(error.message || 'Sign up failed. Please try again.', true);
+            }
+        });
+
+        // Check if user is already logged in
+        if (localStorage.getItem('idToken')) {
+            showMessage('You are already signed in. Redirecting to dashboard...', false);
+            setTimeout(() => {
+                window.location.href = 'index.html';
+            }, 1500);
+        }
+    </script>
+
+</body>
+</html>

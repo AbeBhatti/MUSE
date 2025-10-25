@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vybez — Auth</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'accent-blue': '#3B82F6',
+            'accent-blue-light': '#BFDBFE',
+            'light-bg': '#FFFFFF',
+            'panel-bg': '#F9FAFB',
+            'dark-text': '#1F2937',
+            'mid-text': '#4B5563',
+            'border-light': '#E5E7EB',
+          },
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+        },
+      },
+    };
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+  </style>
+  <link rel="icon" href="#" />
+  <meta name="color-scheme" content="light" />
+  <meta name="description" content="Sign in, sign up, verify, and reset your password." />
+  <script defer src="auth.js"></script>
+  <script>
+    // Configure backend URL
+    const BACKEND_URL = 'http://localhost:1234';
+
+    // Configure backend API endpoints
+    window.AUTH_API = {
+      signup: `${BACKEND_URL}/api/auth/signup`,
+      signin: `${BACKEND_URL}/api/auth/signin`,
+      requestPassword: `${BACKEND_URL}/api/auth/request-password-reset`,
+      resetPassword: `${BACKEND_URL}/api/auth/reset-password`,
+      requestEmailCode: `${BACKEND_URL}/api/auth/request-email-code`,
+      verifyEmailCode: `${BACKEND_URL}/api/auth/verify-email-code`,
+    };
+    // Set to true if your API uses cookies/sessions and expects credentials
+    window.AUTH_WITH_CREDENTIALS = false;
+  </script>
+  <style>
+    .card { box-shadow: 0 8px 30px rgba(0,0,0,0.08) }
+    #signin-section { display: none; }
+  </style>
+  <noscript>JavaScript is required for authentication.</noscript>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com data: blob:; connect-src 'self' http://localhost:1234 https://localhost:1234;" />
+  <meta name="referrer" content="no-referrer" />
+</head>
+<body class="bg-panel-bg text-dark-text font-sans min-h-screen">
+  <header class="bg-light-bg border-b border-border-light">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <div class="w-6 h-6 rounded-full bg-accent-blue"></div>
+        <div class="text-lg font-bold">Synthezia</div>
+      </div>
+      <div class="flex gap-4">
+        <a href="login.html" class="text-sm text-mid-text hover:text-accent-blue">Sign In</a>
+        <a href="index.html" class="text-sm text-mid-text hover:text-accent-blue">Back to app</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="grid md:grid-cols-2 gap-6">
+      <!-- Sign In -->
+      <section class="bg-light-bg border border-border-light rounded-xl p-6 card" id="signin-section">
+        <h2 class="text-xl font-semibold mb-4">Sign In</h2>
+        <form id="signin-form" class="space-y-4" autocomplete="on">
+          <div>
+            <label class="block text-sm text-mid-text mb-1" for="signin-email">Email</label>
+            <input id="signin-email" name="email" type="email" required class="w-full border border-border-light rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-blue" placeholder="you@example.com" />
+          </div>
+          <div>
+            <label class="block text-sm text-mid-text mb-1" for="signin-password">Password</label>
+            <input id="signin-password" name="password" type="password" required minlength="8" class="w-full border border-border-light rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-blue" placeholder="••••••••" />
+          </div>
+          <div class="flex items-center justify-between">
+            <button type="submit" class="bg-accent-blue text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600">Sign In</button>
+            <button type="button" id="link-forgot" class="text-sm text-accent-blue hover:underline">Forgot password?</button>
+          </div>
+          <p id="signin-msg" class="text-sm"></p>
+        </form>
+      </section>
+
+      <!-- Sign Up -->
+      <section class="bg-light-bg border border-border-light rounded-xl p-6 card" id="signup-section">
+        <h2 class="text-xl font-semibold mb-4">Create Account</h2>
+        <form id="signup-form" class="space-y-4" autocomplete="on">
+          <div>
+            <label class="block text-sm text-mid-text mb-1" for="signup-email">Email</label>
+            <input id="signup-email" name="email" type="email" required class="w-full border border-border-light rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-blue" placeholder="you@example.com" />
+          </div>
+          
+          <div>
+            <label class="block text-sm text-mid-text mb-1" for="signup-password">Password</label>
+            <input id="signup-password" name="password" type="password" required minlength="8" class="w-full border border-border-light rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-blue" placeholder="At least 8 characters" />
+          </div>
+          <button type="submit" class="bg-accent-blue text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600 w-full">Create Account</button>
+          <p id="signup-msg" class="text-sm"></p>
+        </form>
+      </section>
+
+      <!-- Password Reset Request -->
+      <section class="bg-light-bg border border-border-light rounded-xl p-6 card hidden" id="reset-request-section">
+        <h2 class="text-xl font-semibold mb-4">Reset Password</h2>
+        <form id="reset-request-form" class="space-y-4" autocomplete="on">
+          <div>
+            <label class="block text-sm text-mid-text mb-1" for="reset-email">Email</label>
+            <input id="reset-email" name="email" type="email" required class="w-full border border-border-light rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-blue" placeholder="you@example.com" />
+          </div>
+          <button type="submit" class="bg-accent-blue text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600">Send reset link</button>
+          <button type="button" id="link-back-login" class="text-sm text-accent-blue hover:underline ml-2">Back to login</button>
+          <p id="reset-request-msg" class="text-sm"></p>
+        </form>
+      </section>
+
+      <!-- Password Reset (token-based) -->
+      <section class="bg-light-bg border border-border-light rounded-xl p-6 card hidden" id="reset-section">
+        <h2 class="text-xl font-semibold mb-4">Set New Password</h2>
+        <form id="reset-form" class="space-y-4" autocomplete="off">
+          <div>
+            <label class="block text-sm text-mid-text mb-1" for="reset-token">Reset Token</label>
+            <input id="reset-token" name="token" type="text" required class="w-full border border-border-light rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-blue" placeholder="Paste token from email" />
+          </div>
+          <div>
+            <label class="block text-sm text-mid-text mb-1" for="reset-password">New Password</label>
+            <input id="reset-password" name="password" type="password" required minlength="8" class="w-full border border-border-light rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-blue" placeholder="••••••••" />
+          </div>
+          <button type="submit" class="bg-accent-blue text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600">Reset Password</button>
+          <p id="reset-msg" class="text-sm"></p>
+        </form>
+      </section>
+
+      <!-- Email Verification -->
+      <section class="bg-light-bg border border-border-light rounded-xl p-6 card" id="email-ver-section">
+        <h2 class="text-xl font-semibold mb-4">Email Verification</h2>
+        <form id="email-request-form" class="space-y-3">
+          <div>
+            <label class="block text-sm text-mid-text mb-1" for="ver-email">Email</label>
+            <input id="ver-email" name="email" type="email" required class="w-full border border-border-light rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-blue" placeholder="you@example.com" />
+          </div>
+          <button type="submit" class="bg-accent-blue text-white px-3 py-2 rounded-lg font-semibold hover:bg-blue-600">Send code</button>
+          <p id="email-request-msg" class="text-sm"></p>
+        </form>
+        <form id="email-verify-form" class="space-y-3 mt-4">
+          <div>
+            <label class="block text-sm text-mid-text mb-1" for="ver-email-code">Verification Code</label>
+            <input id="ver-email-code" name="code" type="text" minlength="4" maxlength="8" required class="w-full border border-border-light rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-blue" placeholder="123456" />
+          </div>
+          <button type="submit" class="bg-green-600 text-white px-3 py-2 rounded-lg font-semibold hover:bg-green-700">Verify email</button>
+          <p id="email-verify-msg" class="text-sm"></p>
+        </form>
+      </section>
+
+      
+    </div>
+  </main>
+
+  <footer class="text-center text-sm text-mid-text py-6">© 2025 Synthezia</footer>
+</body>
+</html>

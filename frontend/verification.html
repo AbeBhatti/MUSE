@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Ensures proper rendering and touch zooming on mobile devices -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Code</title>
+    
+    <!-- 1. Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. Load Inter font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* 3. Set Inter as the default font */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* 4. Hide the number input spinners */
+        /* Chrome, Safari, Edge, Opera */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+
+        /* Firefox */
+        input[type=number] {
+          -moz-appearance: textfield;
+        }
+    </style>
+</head>
+<body class="bg-gray-900">
+
+    <!-- Main container: centers the form vertically and horizontally -->
+    <div class="flex min-h-screen flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        
+        <!-- Form wrapper: sets max width and spacing for all content -->
+        <div class="w-full max-w-sm space-y-6">
+            
+            <!-- Logo -->
+            <div class="flex justify-center">
+                <span class="text-2xl font-bold tracking-tight text-white">
+                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-white">
+                        <!-- Logo Icon -->
+                        <svg class="h-5 w-5" fill="none" stroke-width="2.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"></path>
+                        </svg>
+                    </span>
+                    MÜSE
+                </span>
+            </div>
+
+            <!-- Header Text -->
+            <div classv class="text-center">
+                <h2 class="text-2xl font-bold tracking-tight text-white">
+                    Check your email
+                </h2>
+                <p class="mt-2 text-sm text-gray-400">
+                    We've sent a 6-digit verification code to your email.
+                </p>
+            </div>
+
+            <!-- Code Verification Form -->
+            <form class="space-y-5 pt-8" action="#" method="POST" onsubmit="return false;">
+                
+                <!-- 6-Digit Code Inputs -->
+                <div>
+                    <label for="code-1" class="block text-sm font-medium text-gray-300">
+                        Verification code
+                    </label>
+                    <div id="code-inputs" class="mt-2 flex justify-between space-x-2">
+                        <input id="code-1" name="code-1" type="number" maxlength="1" required
+                            class="code-input h-14 w-12 rounded-md border border-gray-700 bg-gray-800 text-center text-2xl font-medium text-white shadow-sm transition-colors focus:border-purple-500 focus:outline-none focus:ring-purple-500"
+                            oninput="this.value=this.value.slice(0,1)">
+                        <input id="code-2" name="code-2" type="number" maxlength="1" required
+                            class="code-input h-14 w-12 rounded-md border border-gray-700 bg-gray-800 text-center text-2xl font-medium text-white shadow-sm transition-colors focus:border-purple-500 focus:outline-none focus:ring-purple-500"
+                            oninput="this.value=this.value.slice(0,1)">
+                        <input id="code-3" name="code-3" type="number" maxlength="1" required
+                            class="code-input h-14 w-12 rounded-md border border-gray-700 bg-gray-800 text-center text-2xl font-medium text-white shadow-sm transition-colors focus:border-purple-500 focus:outline-none focus:ring-purple-500"
+                            oninput="this.value=this.value.slice(0,1)">
+                        <input id="code-4" name="code-4" type="number" maxlength="1" required
+                            class="code-input h-14 w-12 rounded-md border border-gray-700 bg-gray-800 text-center text-2xl font-medium text-white shadow-sm transition-colors focus:border-purple-500 focus:outline-none focus:ring-purple-500"
+                            oninput="this.value=this.value.slice(0,1)">
+                        <input id="code-5" name="code-5" type="number" maxlength="1" required
+                            class="code-input h-14 w-12 rounded-md border border-gray-700 bg-gray-800 text-center text-2xl font-medium text-white shadow-sm transition-colors focus:border-purple-500 focus:outline-none focus:ring-purple-500"
+                            oninput="this.value=this.value.slice(0,1)">
+                        <input id="code-6" name="code-6" type="number" maxlength="1" required
+                            class="code-input h-14 w-12 rounded-md border border-gray-700 bg-gray-800 text-center text-2xl font-medium text-white shadow-sm transition-colors focus:border-purple-500 focus:outline-none focus:ring-purple-500"
+                            oninput="this.value=this.value.slice(0,1)">
+                    </div>
+                </div>
+
+                <!-- Verify Button -->
+                <div>
+                    <button type="submit"
+                        class="flex w-full justify-center rounded-full border border-transparent bg-purple-700 px-4 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 mt-4">
+                        Verify
+                    </button>
+                </div>
+            </form>
+
+            <!-- Resend Code Link -->
+            <p class="mt-6 text-center text-sm text-gray-400">
+                Didn't receive a code?
+                <a href="#" class="font-medium text-purple-600 transition-colors hover:text-purple-500">
+                    Resend.
+                </a>
+            </p>
+
+        </div>
+    </div>
+
+    <script>
+        const codeInputs = document.querySelectorAll('.code-input');
+
+        codeInputs.forEach((input, index) => {
+            // Handle keydown to manage Backspace
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && input.value === '' && index > 0) {
+                    // If Backspace is pressed on an empty field, move focus to the previous field
+                    codeInputs[index - 1].focus();
+                }
+            });
+
+            // Handle input to manage auto-focusing to the next field
+            input.addEventListener('input', (e) => {
+                // Ensure only one character is in the input
+                if (input.value.length > 1) {
+                    input.value = input.value.slice(0, 1);
+                }
+                
+                // If a digit is entered and it's not the last input, move focus to the next
+                if (input.value.length === 1 && index < codeInputs.length - 1) {
+                    codeInputs[index + 1].focus();
+                }
+            });
+
+            // Handle pasting the code
+            input.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const pasteData = e.clipboardData.getData('text').trim().slice(0, 6);
+                
+                if (pasteData.length === 6 && /^\d+$/.test(pasteData)) {
+                    // If a 6-digit code is pasted
+                    pasteData.split('').forEach((char, i) => {
+                        if (codeInputs[i]) {
+                            codeInputs[i].value = char;
+                        }
+                    });
+                    codeInputs[5].focus(); // Focus the last input
+                } else if (pasteData.length > 0 && /^\d+$/.test(pasteData)) {
+                    // If a partial code is pasted starting from the current input
+                    let currentInput = index;
+                    pasteData.split('').forEach((char) => {
+                        if (codeInputs[currentInput]) {
+                            codeInputs[currentInput].value = char;
+                            currentInput++;
+                        }
+                    });
+                    // Focus the last input that was filled
+                    if (currentInput > codeInputs.length - 1) {
+                        codeInputs[codeInputs.length - 1].focus();
+                    } else {
+                        codeInputs[currentInput].focus();
+                    }
+                }
+            });
+        });
+
+        // Focus the first input on page load
+        window.addEventListener('load', () => {
+            codeInputs[0].focus();
+        });
+    </script>
+
+</body>
+</html>
