@@ -65,6 +65,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const arrayBuffer = await file.arrayBuffer();
       loadMIDI(arrayBuffer, file.name);
   });
+
+  // Auto-open audio upload if coming from dashboard
+  if (localStorage.getItem('autoOpenAudioUpload') === 'true') {
+    localStorage.removeItem('autoOpenAudioUpload');
+    // Trigger the audio file input after a short delay
+    setTimeout(() => {
+      document.getElementById('audioInput').click();
+    }, 500);
+  }
 });
 
 // Preset configurations
@@ -344,5 +353,14 @@ function deleteSelected() {
     selectedNotes.clear();
     document.getElementById('deleteBtn').disabled = true;
     renderPianoRoll();
+}
+
+// Return to dashboard
+function returnToDashboard() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const projectId = urlParams.get('projectId') || localStorage.getItem('currentProjectId') || 'new-project';
+    const projectName = urlParams.get('projectName') || localStorage.getItem('currentProjectName') || 'New Project';
+
+    window.location.href = `dashboard.html?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(projectName)}`;
 }
 

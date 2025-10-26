@@ -45,11 +45,22 @@ def main():
     output_path = out_dir / output_filename
     midi_data.write(str(output_path))
 
+    # Convert note events to a serializable format
+    notes_list = []
+    for event in note_events:
+        notes_list.append({
+            'pitch': int(event['pitch']),
+            'start': float(event['start_time_s']),
+            'duration': float(event['duration_s'])
+        })
+
     result = {
         'success': True,
-        'filename': output_filename,
+        'midi_filename': output_filename,
+        'filename': output_filename,  # Keep for backward compatibility
         'note_count': int(len(note_events)),
         'duration': float(midi_data.get_end_time()),
+        'notes': notes_list
     }
     print(json.dumps(result))
 

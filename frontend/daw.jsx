@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+// Use global React from UMD build when embedded via script tags
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 /**
  * Loop Arranger (Pattern Sequencer)
@@ -425,9 +426,11 @@ function AudioTranscriber({ onSave, onExit }) {
     setError(null);
 
     try {
-      // Dynamically import the transcriber
-      const { AudioTranscriber } = await import('./audio-transcriber.js');
-      const transcriberInstance = new AudioTranscriber();
+      // Use the global AudioTranscriber (loaded via script tag)
+      if (!window.AudioTranscriber) {
+        throw new Error('AudioTranscriber not loaded. Please refresh the page.');
+      }
+      const transcriberInstance = new window.AudioTranscriber();
       
       // Initialize transcriber
       await transcriberInstance.init();
@@ -1366,7 +1369,7 @@ function TimelinePanel({
 
 // --- Main App Component ---
 
-export default function LoopArranger() {
+function LoopArranger() {
   const [bpm, setBpm] = useState(DEFAULT_BPM);
   const [numBars, setNumBars] = useState(NUM_BARS_DEFAULT);
   const [isLooping, setIsLooping] = useState(true);

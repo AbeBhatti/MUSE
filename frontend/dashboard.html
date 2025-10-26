@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MÜSE - Instrument Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'bg-dark': '#0f1116',
+            'panel-dark': '#1a1d23',
+            'text-light': '#e5e7eb',
+            'text-dim': '#9ca3af',
+            'accent-blue': '#3b82f6',
+            'accent-purple': '#8b5cf6',
+            'border-dark': '#2a2e37'
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+
+    .instrument-card {
+      background: linear-gradient(145deg, #1c1f26, #121419);
+      border: 2px solid #2a2e37;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+    }
+
+    .instrument-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 24px rgba(59,130,246,0.3);
+      border-color: rgba(59,130,246,0.6);
+    }
+
+    .instrument-icon {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+
+<body class="bg-bg-dark text-text-light font-sans antialiased h-screen flex flex-col overflow-hidden">
+
+  <!-- Top App Bar -->
+  <header class="flex-shrink-0 bg-panel-dark border-b border-border-dark px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center shadow-lg">
+    <div class="flex items-center space-x-6">
+      <div class="text-xl font-bold text-text-light tracking-wide">MÜSE</div>
+      <div class="text-sm text-text-dim" id="projectName">New Project</div>
+    </div>
+
+    <div class="flex items-center space-x-4">
+      <button onclick="goBackToProjects()"
+              class="bg-panel-dark text-text-light py-2 px-4 rounded-lg
+                     font-semibold text-sm hover:bg-[#22252c] transition border border-border-dark">
+        Back to Projects
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-grow overflow-y-auto p-6 sm:p-8 bg-bg-dark flex items-center justify-center">
+
+    <div class="max-w-6xl w-full">
+      <div class="text-center mb-12">
+        <h1 class="text-4xl font-bold text-text-light mb-3">Choose Your Instrument</h1>
+        <p class="text-text-dim text-lg">Select an instrument to start creating your beat</p>
+      </div>
+
+      <!-- Instrument Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+
+        <!-- Drums -->
+        <div onclick="selectInstrument('drums')"
+             class="instrument-card rounded-2xl p-8 cursor-pointer flex flex-col items-center justify-center text-center">
+          <div class="instrument-icon">🥁</div>
+          <h3 class="text-2xl font-bold mb-2">Drums</h3>
+          <p class="text-text-dim text-sm">Create rhythm and beats</p>
+        </div>
+
+        <!-- Bass -->
+        <div onclick="selectInstrument('bass')"
+             class="instrument-card rounded-2xl p-8 cursor-pointer flex flex-col items-center justify-center text-center">
+          <div class="instrument-icon">🎸</div>
+          <h3 class="text-2xl font-bold mb-2">Bass</h3>
+          <p class="text-text-dim text-sm">Add deep low-end grooves</p>
+        </div>
+
+        <!-- Synth -->
+        <div onclick="selectInstrument('synth')"
+             class="instrument-card rounded-2xl p-8 cursor-pointer flex flex-col items-center justify-center text-center">
+          <div class="instrument-icon">🎛️</div>
+          <h3 class="text-2xl font-bold mb-2">Synth</h3>
+          <p class="text-text-dim text-sm">Electronic sounds and textures</p>
+        </div>
+
+        <!-- Piano -->
+        <div onclick="selectInstrument('piano')"
+             class="instrument-card rounded-2xl p-8 cursor-pointer flex flex-col items-center justify-center text-center">
+          <div class="instrument-icon">🎹</div>
+          <h3 class="text-2xl font-bold mb-2">Piano</h3>
+          <p class="text-text-dim text-sm">Classic melodic instrument</p>
+        </div>
+
+        <!-- Add Audio File -->
+        <div onclick="addAudioFile()"
+             class="instrument-card rounded-2xl p-8 cursor-pointer flex flex-col items-center justify-center text-center lg:col-span-2">
+          <div class="instrument-icon">🎵</div>
+          <h3 class="text-2xl font-bold mb-2">Add Audio File</h3>
+          <p class="text-text-dim text-sm">Upload MP3 and convert to MIDI</p>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

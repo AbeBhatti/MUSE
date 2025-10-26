@@ -156,12 +156,25 @@
 
   <script>
     function createNewProject() {
-      const projectId = 'project-' + Date.now();
-      window.location.href = `editor.html?id=${projectId}`;
+      // Generate a unique project ID
+      const projectId = 'project_' + Date.now();
+      const projectName = 'New Beat';
+
+      // Store project info
+      localStorage.setItem('currentProjectId', projectId);
+      localStorage.setItem('currentProjectName', projectName);
+
+      // Redirect to dashboard instead of directly to MIDI editor
+      window.location.href = `dashboard.html?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(projectName)}`;
     }
 
     function openEditor(projectId) {
-      window.location.href = `editor.html?id=${projectId}`;
+      // When opening an existing project, go to dashboard first
+      const projectName = projectId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      localStorage.setItem('currentProjectId', projectId);
+      localStorage.setItem('currentProjectName', projectName);
+
+      window.location.href = `dashboard.html?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(projectName)}`;
     }
   </script>
 </body>
