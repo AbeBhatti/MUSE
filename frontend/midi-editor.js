@@ -120,29 +120,64 @@ async function startTranscription() {
 
     closeModal();
     showModal('loadingModal');
+    
+    // Update loading text based on separation option
+    const loadingText = document.getElementById('loadingText');
+    const useSeparation = document.getElementById('useSeparation')?.checked ?? true;
+    if (useSeparation) {
+        loadingText.textContent = 'Separating audio stems and transcribing to MIDI...';
+    } else {
+        loadingText.textContent = 'Transcribing audio to MIDI...';
+    }
 
     try {
         const formData = new FormData();
         formData.append('file', currentAudioFile);
-        formData.append('onset_threshold', document.getElementById('onsetThreshold').value);
-        formData.append('frame_threshold', document.getElementById('frameThreshold').value);
-        formData.append('min_note_len', document.getElementById('minNoteLen').value);
-        formData.append('min_freq', document.getElementById('minFreq').value || '');
-        formData.append('max_freq', document.getElementById('maxFreq').value || '');
-        formData.append('melodia_trick', 'true');
+        
+        // Use separation endpoint for stem separation
+        const useSeparation = document.getElementById('useSeparation')?.checked ?? true;
+        
+        if (useSeparation) {
+            // Use separation endpoint
+            formData.append('use_demucs', 'true');
+            
+            const response = await fetch(`${API_URL}/separate`, { method: 'POST', body: formData });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Separation failed: ${response.status} ${errorText}`);
+            }
 
-        const response = await fetch(`${API_URL}/upload`, { method: 'POST', body: formData });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Transcription failed: ${response.status} ${errorText}`);
+            const result = await response.json();
+            closeModal();
+            
+            // Load separated tracks
+            if (result.tracks && result.tracks.length > 0) {
+                await loadSeparatedTracks(result);
+            } else {
+                alert('No tracks found in separated audio');
+            }
+        } else {
+            // Use basic transcription
+            formData.append('onset_threshold', document.getElementById('onsetThreshold').value);
+            formData.append('frame_threshold', document.getElementById('frameThreshold').value);
+            formData.append('min_note_len', document.getElementById('minNoteLen').value);
+            formData.append('min_freq', document.getElementById('minFreq').value || '');
+            formData.append('max_freq', document.getElementById('maxFreq').value || '');
+            formData.append('melodia_trick', 'true');
+
+            const response = await fetch(`${API_URL}/upload`, { method: 'POST', body: formData });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Transcription failed: ${response.status} ${errorText}`);
+            }
+
+            const result = await response.json();
+            const midiResponse = await fetch(`${API_URL}/midi/${result.filename}`);
+            if (!midiResponse.ok) throw new Error(`Failed to fetch MIDI file: ${midiResponse.status}`);
+            const midiBuffer = await midiResponse.arrayBuffer();
+            closeModal();
+            loadMIDI(midiBuffer, result.filename);
         }
-
-        const result = await response.json();
-        const midiResponse = await fetch(`${API_URL}/midi/${result.filename}`);
-        if (!midiResponse.ok) throw new Error(`Failed to fetch MIDI file: ${midiResponse.status}`);
-        const midiBuffer = await midiResponse.arrayBuffer();
-        closeModal();
-        loadMIDI(midiBuffer, result.filename);
     } catch (error) {
         closeModal();
         alert('Error during transcription: ' + error.message);
@@ -165,7 +200,8 @@ async function loadMIDI(arrayBuffer, filename) {
                     velocity: note.velocity,
                     name: note.name,
                     trackIndex: trackIndex,
-                    id: `${trackIndex}-${time}-${note.midi}`
+                    id: `${trackIndex}-${time}-${note.midi}`,
+                    trackName: track.name || `Track ${trackIndex + 1}`
                 });
             });
         });
@@ -186,6 +222,72 @@ async function loadMIDI(arrayBuffer, filename) {
     } catch (error) {
         console.error('Error loading MIDI:', error);
         alert('Error loading MIDI file: ' + error.message);
+    }
+}
+
+async function loadSeparatedTracks(result) {
+    try {
+        notes = [];
+        let allNotes = [];
+        const trackColors = {
+            'vocals': '#ef4444',  // red
+            'drums': '#10b981',   // green
+            'bass': '#ec4899',    // pink
+            'other': '#8b5cf6'    // purple
+        };
+        
+        // Process each track
+        for (let i = 0; i < result.tracks.length; i++) {
+            const track = result.tracks[i];
+            const trackName = track.stem;
+            const color = trackColors[trackName] || '#6b7280';
+            
+            // Fetch the MIDI for this track
+            const midiPath = track.midi_path;
+            const midiResponse = await fetch(`${API_URL}${midiPath}`);
+            
+            if (midiResponse.ok) {
+                const midiBuffer = await midiResponse.arrayBuffer();
+                const trackMidi = new Midi(midiBuffer);
+                
+                // Add notes from this track
+                trackMidi.tracks.forEach((midiTrack) => {
+                    midiTrack.notes.forEach(note => {
+                        const duration = Math.max(note.duration || 0.1, 0.1);
+                        const time = Math.max(note.time || 0, 0);
+                        allNotes.push({
+                            midi: note.midi,
+                            time: time,
+                            duration: duration,
+                            velocity: note.velocity,
+                            name: note.name,
+                            trackIndex: i,
+                            trackName: trackName,
+                            trackColor: color,
+                            id: `${i}-${time}-${note.midi}`
+                        });
+                    });
+                });
+            }
+        }
+        
+        notes = allNotes;
+        duration = notes.length > 0 ? Math.max(...notes.map(n => n.time + n.duration)) : 10;
+        currentTime = 0;
+        
+        const totalNotes = notes.length;
+        const trackInfo = result.tracks.map(t => `${t.stem}: ${t.note_count}`).join(', ');
+        document.getElementById('fileInfo').textContent = `Separated - ${totalNotes} notes (${trackInfo})`;
+        document.getElementById('playBtn').disabled = false;
+        document.getElementById('saveBtn').disabled = false;
+        
+        await initSynth();
+        renderPianoRoll();
+        renderPianoKeys();
+        updateTimeDisplay();
+    } catch (error) {
+        console.error('Error loading separated tracks:', error);
+        alert('Error loading separated tracks: ' + error.message);
     }
 }
 
@@ -238,7 +340,17 @@ function renderPianoRoll() {
         div.style.top = y + 'px';
         div.style.width = w + 'px';
         div.style.height = (NOTE_HEIGHT - 2) + 'px';
-        div.title = `${n.name} @ ${n.time.toFixed(2)}s`;
+        
+        // Apply track color if available (for separated stems)
+        if (n.trackColor) {
+            div.style.backgroundColor = n.trackColor;
+            div.style.borderColor = n.trackColor;
+        }
+        
+        // Add track name to title
+        const trackInfo = n.trackName ? `[${n.trackName}] ` : '';
+        div.title = `${trackInfo}${n.name} @ ${n.time.toFixed(2)}s`;
+        
         div.addEventListener('click', (e) => {
             e.stopPropagation();
             if (selectedNotes.has(n.id)) {

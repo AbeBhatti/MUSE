@@ -400,7 +400,8 @@ function AudioTranscriber({ onSave, onExit }) {
   const [transcriptionOptions, setTranscriptionOptions] = useState({
     confidenceThreshold: 0.3,
     minNoteDuration: 0.1,
-    bpm: DEFAULT_BPM
+    bpm: DEFAULT_BPM,
+    useSeparation: true  // Enable stem separation by default
   });
 
   const handleFileChange = (e) => {
@@ -435,37 +436,83 @@ function AudioTranscriber({ onSave, onExit }) {
       // Initialize transcriber
       await transcriberInstance.init();
       
-      // Perform real transcription
+      // Debug log the options
+      console.log('DAW AudioTranscriber options:', {
+        useSeparation: transcriptionOptions.useSeparation,
+        confidenceThreshold: transcriptionOptions.confidenceThreshold,
+        minNoteDuration: transcriptionOptions.minNoteDuration,
+        bpm: transcriptionOptions.bpm,
+        maxBars: MAX_TRANSCRIPTION_BARS
+      });
+      
+      // Perform transcription with optional stem separation
       const transcriptionData = await transcriberInstance.transcribeAudio(file, {
+        useSeparation: transcriptionOptions.useSeparation,
         confidenceThreshold: transcriptionOptions.confidenceThreshold,
         minNoteDuration: transcriptionOptions.minNoteDuration,
         bpm: transcriptionOptions.bpm,
         maxBars: MAX_TRANSCRIPTION_BARS
       });
 
-      // Convert to the expected format
-      const formattedNotes = transcriptionData.notes.map(note => ({
-        id: note.id,
-        note: note.note,
-        start: note.start,
-        duration: note.duration
-      }));
+      // Check if we have separated tracks
+      if (transcriptionData.tracks && transcriptionData.tracks.length > 0) {
+        // Create a pattern for each separated track
+        transcriptionData.tracks.forEach((track) => {
+          if (track.notes && track.notes.length > 0) {
+            // Display name for each track
+            let displayName = track.stem.charAt(0).toUpperCase() + track.stem.slice(1);
+            
+            // Map stems to more descriptive names
+            if (track.stem === "original") {
+              displayName = "Full Mix";
+            } else if (track.stem === "other") {
+              displayName = "Other/Synth";
+            }
+            
+            /** @type {Pattern} */
+            const newPattern = {
+              id: uid(),
+              name: `${displayName}: ${file.name.substring(0, 15)}...`,
+              instrument: "transcribed",
+              // @ts-ignore
+              data: {
+                type: "transcribed",
+                notes: track.notes,
+                audioLengthBars: transcriptionData.audioLengthBars,
+                originalFileName: transcriptionData.originalFileName,
+                stemType: track.stem,
+                trackName: displayName
+              },
+            };
+            
+            onSave(newPattern);
+          }
+        });
+      } else {
+        // Fallback: single pattern if no tracks (shouldn't happen with separation)
+        const formattedNotes = transcriptionData.notes?.map(note => ({
+          id: note.id,
+          note: note.note,
+          start: note.start,
+          duration: note.duration
+        })) || [];
 
-      /** @type {Pattern} */
-      const newPattern = {
-        id: uid(),
-        name: `Transcribed: ${file.name.substring(0, 20)}...`,
-        instrument: "transcribed",
-        // @ts-ignore
-        data: {
-          type: "transcribed",
-          notes: formattedNotes,
-          audioLengthBars: transcriptionData.audioLengthBars,
-          originalFileName: transcriptionData.originalFileName,
-        },
-      };
-      
-      onSave(newPattern);
+        /** @type {Pattern} */
+        const newPattern = {
+          id: uid(),
+          name: `Transcribed: ${file.name.substring(0, 20)}...`,
+          instrument: "transcribed",
+          // @ts-ignore
+          data: {
+            type: "transcribed",
+            notes: formattedNotes,
+            audioLengthBars: transcriptionData.audioLengthBars,
+            originalFileName: transcriptionData.originalFileName,
+          },
+        };
+        
+        onSave(newPattern);
+      }
       // The modal will close via the onSave handler in the parent
     } catch (e) {
       console.error("Audio transcription failed:", e);
@@ -561,6 +608,24 @@ function AudioTranscriber({ onSave, onExit }) {
                 }))}
                 className="w-full bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-sm"
               />
+            </div>
+
+            <div className="mt-4">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={transcriptionOptions.useSeparation}
+                  onChange={(e) => setTranscriptionOptions(prev => ({
+                    ...prev,
+                    useSeparation: e.target.checked
+                  }))}
+                  className="mr-2"
+                />
+                <span className="text-sm font-medium">Separate into stems (vocals, drums, bass, other)</span>
+              </label>
+              <p className="text-xs text-zinc-400 mt-1 ml-6">
+                When enabled, audio will be separated into 4 tracks. This takes longer but provides better results.
+              </p>
             </div>
           </div>
         </div>

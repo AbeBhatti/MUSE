@@ -120,6 +120,13 @@
     <div class="modal" id="transcriptionModal">
         <div class="modal-content">
             <div class="modal-header">🎵 Transcription Settings</div>
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="useSeparation" checked style="width: auto; margin-right: 10px;">
+                    <span>Separate into stems (vocals, drums, bass, other)</span>
+                </label>
+                <small style="color: #999; display: block; margin-top: 5px;">When enabled, audio will be separated into 4 tracks before transcription. This takes longer but provides better results.</small>
+            </div>
             <div class="preset-buttons">
                 <button class="preset-btn" onclick="applyPreset('default')">Default</button>
                 <button class="preset-btn" onclick="applyPreset('singing')">Singing</button>

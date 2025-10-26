@@ -6,6 +6,17 @@
 # Dependencies
 node_modules/
 
+backend/.venv*
+
+# Python virtual environments
+.venv/
+venv/
+*.pyc
+__pycache__/
+.Python
+env/
+ENV/
+
 # Audio/MIDI temp and outputs
 audio-midi/output/
 audio-midi/temp_output/

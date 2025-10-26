@@ -393,143 +393,294 @@ const getRandomFloat = (min, max) => Math.random() * (max - min) + min;
 /**
  * @param {{ onSave: (p: Pattern) => void, onExit: () => void }} props 
  */
-function AudioTranscriber({ onSave, onExit }) {
+function AudioTranscriber({ onSave, onExit } = {}) {
+  console.log('[AudioTranscriber] Component mounting/rendering');
+  console.log('[AudioTranscriber] Props:', { hasOnSave: !!onSave, hasOnExit: !!onExit });
+  
+  // Use refs for external callbacks to avoid stale closures
+  const onSaveRef = useRef(onSave);
+  const onExitRef = useRef(onExit);
+  
+  // Update refs when props change
+  useEffect(() => {
+    onSaveRef.current = onSave;
+    onExitRef.current = onExit;
+  }, [onSave, onExit]);
+  
+  // Use refs for state to avoid React hydration errors
   const [file, setFile] = useState(null);
+  const fileRef = useRef(file);
+  
   const [isLoading, setIsLoading] = useState(false);
+  const isLoadingRef = useRef(isLoading);
+  
   const [error, setError] = useState(null);
-
-  /**
-   * Real transcription using the backend API
-   * @param {File} file - The audio file to transcribe
-   */
-  const realTranscription = async (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    // Add default transcription parameters
-    formData.append('onset_threshold', '0.5');
-    formData.append('frame_threshold', '0.3');
-    formData.append('min_note_len', '0.127');
-    formData.append('melodia_trick', 'true');
-
-    const response = await fetch('http://localhost:1234/upload', {
-      method: 'POST',
-      body: formData
+  const errorRef = useRef(error);
+  
+  const [transcriptionOptions] = useState({
+    confidenceThreshold: 0.5,
+    minNoteDuration: 0.127,
+    bpm: DEFAULT_BPM,
+    useSeparation: true,
+  });
+  
+  // Keep refs in sync with state
+  useEffect(() => {
+    fileRef.current = file;
+  }, [file]);
+  
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+  }, [isLoading]);
+  
+  useEffect(() => {
+    errorRef.current = error;
+  }, [error]);
+  
+  // Safe state setters that won't cause hydration errors
+  const safeSetError = useCallback((newError) => {
+    requestAnimationFrame(() => {
+      setError(newError);
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Transcription failed: ${response.status} ${errorText}`);
-    }
-
-    const data = await response.json();
-
-    if (!data.notes || !Array.isArray(data.notes)) {
-      throw new Error('Invalid transcription response format');
-    }
-
-    // Convert backend format to DAW format
-    const beatsPerBar = BEATS_PER_BAR;
-    const bpm = DEFAULT_BPM;
-    const secondsPerBeat = 60 / bpm;
-    const secondsPerBar = secondsPerBeat * beatsPerBar;
-
-    // Calculate total length in bars from the last note
-    let maxTime = 0;
-    data.notes.forEach(note => {
-      const endTime = note.start + note.duration;
-      if (endTime > maxTime) {
-        maxTime = endTime;
-      }
+  }, []);
+  
+  const safeSetLoading = useCallback((newLoading) => {
+    requestAnimationFrame(() => {
+      setIsLoading(newLoading);
     });
-
-    let audioLengthBars = Math.ceil(maxTime / secondsPerBar);
-
-    // Clamp to maxBars
-    if (audioLengthBars > MAX_TRANSCRIPTION_BARS) {
-      audioLengthBars = MAX_TRANSCRIPTION_BARS;
+  }, []);
+  
+  // Log when component mounts and check dependencies
+  useEffect(() => {
+    console.log('[AudioTranscriber] Component mounted');
+    console.log('[AudioTranscriber] window.AudioTranscriber available:', !!window.AudioTranscriber);
+    
+    if (!window.AudioTranscriber) {
+      console.error('[AudioTranscriber] ERROR: window.AudioTranscriber is not defined!');
+      console.error('[AudioTranscriber] This means audio-transcriber.js did not load correctly');
+      safeSetError('Audio transcriber not loaded. Please refresh the page.');
     }
-
-    // Ensure at least 1 bar
-    if (audioLengthBars < 1) {
-      audioLengthBars = 1;
-    }
-
-    // Convert notes from seconds to beats
-    const maxBeats = MAX_TRANSCRIPTION_BARS * beatsPerBar;
-    const formattedNotes = data.notes.map((note, index) => {
-      // Convert time from seconds to beats
-      const startInBeats = note.start / secondsPerBeat;
-      const durationInBeats = note.duration / secondsPerBeat;
-
-      // Filter out notes beyond maxBars
-      if (startInBeats >= maxBeats) {
-        return null;
-      }
-
-      return {
-        id: uid(),
-        note: note.pitch,
-        start: parseFloat(startInBeats.toFixed(4)),
-        duration: parseFloat(Math.min(durationInBeats, maxBeats - startInBeats).toFixed(4))
-      };
-    }).filter(note => note !== null);
-
-    return {
-      notes: formattedNotes,
-      audioLengthBars,
-      originalFileName: file.name,
+    
+    return () => {
+      console.log('[AudioTranscriber] Component unmounting');
     };
-  };
+  }, [safeSetError]);
 
-  const handleFileChange = (e) => {
+  const handleFileChange = useCallback((e) => {
     const uploadedFile = e.target.files?.[0];
     if (uploadedFile) {
         if (!uploadedFile.type.startsWith('audio/')) {
-            setError("Please upload an audio file (e.g., MP3, WAV).");
+            safeSetError("Please upload an audio file (e.g., MP3, WAV).");
             setFile(null);
             return;
         }
         setFile(uploadedFile);
-        setError(null);
+        safeSetError(null);
     }
-  };
+  }, [safeSetError]);
 
-  const handleSubmit = async () => {
-    if (!file) {
-      setError("Please select an audio file first.");
+  const handleSubmit = useCallback(async () => {
+    console.log('[AudioTranscriber] handleSubmit called');
+    
+    if (!fileRef.current) {
+      console.log('[AudioTranscriber] No file selected');
+      safeSetError("Please select an audio file first.");
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    console.log('[AudioTranscriber] Starting transcription for:', fileRef.current.name);
+    
+    // Clear error first, then set loading
+    safeSetError(null);
+    safeSetLoading(true);
 
     try {
-      const transcriptionData = await realTranscription(file);
+      console.log('[AudioTranscriber] Checking onSave function:', typeof onSaveRef.current);
+      if (typeof onSaveRef.current !== 'function') {
+        throw new Error('onSave handler is missing');
+      }
+      
+      console.log('[AudioTranscriber] Checking window.AudioTranscriber:', !!window.AudioTranscriber);
+      if (!window.AudioTranscriber) {
+        throw new Error('AudioTranscriber not loaded. Please refresh the page.');
+      }
 
-      /** @type {Pattern} */
-      const newPattern = {
-        id: uid(),
-        name: `Transcribed: ${file.name.substring(0, 20)}...`,
-        instrument: "transcribed",
-        // @ts-ignore
-        data: {
-          type: "transcribed",
-          notes: transcriptionData.notes,
-          audioLengthBars: transcriptionData.audioLengthBars,
-          originalFileName: transcriptionData.originalFileName,
-        },
-      };
+      const transcriberInstance = new window.AudioTranscriber();
+      await transcriberInstance.init();
 
-      onSave(newPattern);
-      // The modal will close via the onSave handler in the parent
+      console.log('[AudioTranscriber] Options:', {
+        useSeparation: transcriptionOptions.useSeparation,
+        confidenceThreshold: transcriptionOptions.confidenceThreshold,
+        minNoteDuration: transcriptionOptions.minNoteDuration,
+        bpm: transcriptionOptions.bpm,
+        maxBars: MAX_TRANSCRIPTION_BARS
+      });
+
+      const transcriptionData = await transcriberInstance.transcribeAudio(fileRef.current, {
+        useSeparation: transcriptionOptions.useSeparation,
+        confidenceThreshold: transcriptionOptions.confidenceThreshold,
+        minNoteDuration: transcriptionOptions.minNoteDuration,
+        bpm: transcriptionOptions.bpm,
+        maxBars: MAX_TRANSCRIPTION_BARS
+      });
+
+      console.log('[AudioTranscriber] Received transcription data:', {
+        hasTracks: !!transcriptionData.tracks,
+        trackCount: transcriptionData.tracks?.length || 0,
+        hasNotes: !!transcriptionData.notes
+      });
+
+      if (transcriptionData.tracks && transcriptionData.tracks.length > 0) {
+        console.log('[AudioTranscriber] Processing', transcriptionData.tracks.length, 'tracks');
+        // Collect all patterns first, then save them in batch
+        const patternsToSave = [];
+        
+        transcriptionData.tracks.forEach((track, trackIdx) => {
+          console.log(`[AudioTranscriber] Track ${trackIdx}:`, track.stem, 'notes:', track.notes?.length || 0);
+          
+          if (track.notes && track.notes.length > 0) {
+            let displayName = track.stem ? (track.stem.charAt(0).toUpperCase() + track.stem.slice(1)) : 'Track';
+            if (track.stem === 'original') displayName = 'Full Mix';
+            if (track.stem === 'other') displayName = 'Other/Synth';
+
+            const uniqueId = uid();
+            const timestamp = Date.now();
+            
+            /** @type {Pattern} */
+            const pattern = {
+              id: uniqueId,
+              name: `${displayName}: ${file.name.substring(0, 15)}...`,
+              instrument: 'transcribed',
+              // @ts-ignore
+              data: {
+                type: 'transcribed',
+                notes: track.notes.map((n, i) => ({ 
+                  id: `t_${uniqueId}_${i}`, 
+                  note: n.note || n.pitch,  // Support both formats
+                  start: n.start,  // Already in beats from audio-transcriber.js
+                  duration: n.duration
+                })),
+                audioLengthBars: transcriptionData.audioLengthBars || MAX_TRANSCRIPTION_BARS,
+                originalFileName: transcriptionData.originalFileName || file.name,
+                stemType: track.stem,
+                trackName: displayName,
+              },
+            };
+
+            console.log(`[AudioTranscriber] Created pattern for ${displayName}:`, pattern.data.notes.length, 'notes');
+            patternsToSave.push(pattern);
+          }
+        });
+        
+        // Complete transcription UI first
+        console.log('[AudioTranscriber] Saving', patternsToSave.length, 'patterns');
+        safeSetLoading(false);
+        
+        // Use a recursive function for sequential pattern saving
+        const savePatternSequentially = (patterns, index) => {
+          if (index >= patterns.length) {
+            console.log('[AudioTranscriber] All patterns saved, closing modal');
+            // All patterns saved, exit after a short delay
+            setTimeout(() => {
+              if (onExitRef.current) onExitRef.current();
+            }, 100);
+            return;
+          }
+          
+          const pattern = patterns[index];
+          console.log(`[AudioTranscriber] Saving pattern ${index + 1}/${patterns.length}:`, pattern.name);
+          
+          try {
+            // Save current pattern
+            if (onSaveRef.current) onSaveRef.current(pattern);
+            
+            // Save next pattern after a delay
+            setTimeout(() => {
+              savePatternSequentially(patterns, index + 1);
+            }, 50);
+          } catch (err) {
+            console.error(`[AudioTranscriber] Error saving pattern ${index + 1}:`, err);
+            // Continue with next pattern despite error
+            setTimeout(() => {
+              savePatternSequentially(patterns, index + 1);
+            }, 50);
+          }
+        };
+        
+        // Start saving patterns in next frame
+        requestAnimationFrame(() => {
+          savePatternSequentially(patternsToSave, 0);
+        });
+        
+        console.log('[AudioTranscriber] Pattern saving scheduled');
+      } else {
+        // Fallback to single pattern when separation not used
+        const beatsPerBar = BEATS_PER_BAR;
+        const secondsPerBeat = 60 / transcriptionOptions.bpm;
+
+        const formattedNotes = (transcriptionData.notes || []).map((note, index) => ({
+          id: `note_${index}_${Date.now()}`,
+          note: note.pitch,
+          start: (note.start / secondsPerBeat),
+          duration: (note.duration / secondsPerBeat),
+        }));
+
+        let audioLengthBars = Math.max(1, Math.min(MAX_TRANSCRIPTION_BARS, Math.ceil((formattedNotes.reduce((m, n) => Math.max(m, n.start * secondsPerBeat + n.duration * secondsPerBeat), 0)) / (secondsPerBeat * beatsPerBar))));
+
+        /** @type {Pattern} */
+        const newPattern = {
+          id: uid(),
+          name: `Transcribed: ${file.name.substring(0, 20)}...`,
+          instrument: 'transcribed',
+          // @ts-ignore
+          data: {
+            type: 'transcribed',
+            notes: formattedNotes,
+            audioLengthBars,
+            originalFileName: file.name,
+          },
+        };
+
+        // Use the same approach with refs for single pattern
+        safeSetLoading(false);
+        
+        // Save pattern in next frame
+        requestAnimationFrame(() => {
+          console.log('[AudioTranscriber] Saving single pattern:', newPattern.name);
+          if (onSaveRef.current) onSaveRef.current(newPattern);
+          
+          // Close modal after a delay
+          setTimeout(() => {
+            console.log('[AudioTranscriber] Pattern saved, closing modal');
+            if (onExitRef.current) onExitRef.current();
+          }, 100);
+        });
+      }
     } catch (e) {
-      console.error("Transcription failed:", e);
-      setError(e.message || "An error occurred during transcription.");
-    } finally {
-      setIsLoading(false);
+      console.error('[AudioTranscriber] Transcription failed:', e);
+      console.error('[AudioTranscriber] Error type:', typeof e);
+      console.error('[AudioTranscriber] Error constructor:', e?.constructor?.name);
+      console.error('[AudioTranscriber] Error message:', e?.message);
+      console.error('[AudioTranscriber] Error stack:', e?.stack);
+      console.error('[AudioTranscriber] Error toString:', String(e));
+      
+      // Try to extract a meaningful error message
+      let errorMessage = "An error occurred during transcription.";
+      if (e && e.message) {
+        errorMessage = e.message;
+      } else if (typeof e === 'string') {
+        errorMessage = e;
+      } else if (e) {
+        errorMessage = String(e);
+      }
+      
+      console.error('[AudioTranscriber] Setting error message:', errorMessage);
+      
+      // Use safe setters with refs
+      safeSetLoading(false);
+      safeSetError(errorMessage);
     }
-  };
+  }, [safeSetError, safeSetLoading]);
 
   return (
     <div className="p-6 bg-zinc-800 rounded-xl shadow-2xl w-full max-w-lg text-white">

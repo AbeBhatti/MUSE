@@ -194,7 +194,12 @@ const OUTPUT_DIR = path.join(AUDIO_MIDI_ROOT, 'temp_output');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
-const upload = multer({ dest: UPLOAD_DIR });
+const upload = multer({ 
+    dest: UPLOAD_DIR,
+    limits: { 
+        fileSize: 100 * 1024 * 1024  // 100MB limit for longer audio files (up to 300 seconds)
+    }
+});
 
 // POST /upload — accepts audio, runs Python transcription via Basic Pitch
 app.post('/upload', upload.single('file'), async (req, res) => {
@@ -231,14 +236,27 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     if (min_freq) args.push('--min_freq', String(min_freq));
     if (max_freq) args.push('--max_freq', String(max_freq));
 
-    // Use PYTHON_CMD from environment if available, otherwise fallback to python3
-    const pythonCmd = process.env.PYTHON_CMD || 'python3';
+    // Use Python from the virtual environment (.venv) or system Python
+    const venvPython = path.join(__dirname, '..', '.venv', 'bin', 'python');
+    const pythonCmd = fs.existsSync(venvPython) ? venvPython : 'python3';
+    console.log('Using Python:', pythonCmd);
+    console.log('Python exists?', fs.existsSync(venvPython) ? 'Yes (.venv)' : 'No (using system python3)');
+    
     const py = spawn(pythonCmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    console.log('Python process started, PID:', py.pid);
 
     let out = '';
     let err = '';
-    py.stdout.on('data', (d) => (out += d.toString()));
-    py.stderr.on('data', (d) => (err += d.toString()));
+    py.stdout.on('data', (d) => {
+      const chunk = d.toString();
+      out += chunk;
+      console.log('[Python STDOUT]:', chunk.trim());
+    });
+    py.stderr.on('data', (d) => {
+      const chunk = d.toString();
+      err += chunk;
+      console.log('[Python STDERR]:', chunk.trim());
+    });
 
     py.on('close', (code) => {
       // Cleanup uploaded file regardless of outcome
@@ -266,6 +284,169 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 app.get('/midi/:filename', (req, res) => {
   const f = req.params.filename;
   const p = path.join(OUTPUT_DIR, f);
+  if (!fs.existsSync(p)) return res.status(404).json({ error: 'Not found' });
+  return res.sendFile(p);
+});
+
+// POST /separate — accepts audio, separates into stems and converts to MIDI
+app.post('/separate', upload.single('file'), async (req, res) => {
+  console.log('\n=== SEPARATE ENDPOINT CALLED ===');
+  console.log('Timestamp:', new Date().toISOString());
+  
+  try {
+    if (!req.file) {
+      console.error('ERROR: No file provided');
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    console.log('File received:', {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path
+    });
+
+    const {
+      use_demucs = 'true',
+    } = req.body || {};
+    
+    console.log('Options:', { use_demucs });
+
+    // Move uploaded file to preserve original filename
+    const originalName = req.file.originalname || 'audio.mp3';
+    const finalPath = path.join(UPLOAD_DIR, originalName);
+    console.log('Moving file from:', req.file.path, 'to:', finalPath);
+    fs.renameSync(req.file.path, finalPath);
+
+    // Create unique output directory for this request
+    const requestId = Date.now().toString();
+    const requestOutputDir = path.join(OUTPUT_DIR, requestId);
+    console.log('Creating output directory:', requestOutputDir);
+    fs.mkdirSync(requestOutputDir, { recursive: true });
+    console.log('Request ID:', requestId);
+    console.log('Output directory:', requestOutputDir);
+
+    // Build python args for audio processor
+    const pyPath = path.join(AUDIO_MIDI_ROOT, 'audio_processor.py');
+    const args = [
+      pyPath,
+      finalPath,
+      requestOutputDir,
+      String(use_demucs),
+    ];
+    console.log('Python script:', pyPath);
+    console.log('Python args:', args);
+
+    // Use Python from the virtual environment (.venv) or system Python
+    const venvPython = path.join(__dirname, '..', '.venv', 'bin', 'python');
+    const pythonCmd = fs.existsSync(venvPython) ? venvPython : 'python3';
+    console.log('Using Python:', pythonCmd);
+    console.log('Python exists?', fs.existsSync(venvPython) ? 'Yes (.venv)' : 'No (using system python3)');
+    
+    const py = spawn(pythonCmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    console.log('Python process started, PID:', py.pid);
+
+    let out = '';
+    let err = '';
+    py.stdout.on('data', (d) => {
+      const chunk = d.toString();
+      out += chunk;
+      console.log('[Python STDOUT]:', chunk.trim());
+    });
+    py.stderr.on('data', (d) => {
+      const chunk = d.toString();
+      err += chunk;
+      console.log('[Python STDERR]:', chunk.trim());
+    });
+
+    py.on('close', (code) => {
+      console.log('\n=== PYTHON PROCESS FINISHED ===');
+      console.log('Exit code:', code);
+      console.log('Total stdout length:', out.length);
+      console.log('Total stderr length:', err.length);
+      
+      // Cleanup uploaded file regardless of outcome
+      try { fs.unlinkSync(finalPath); } catch {}
+
+      if (code !== 0) {
+        console.error('ERROR: Audio processing failed with code', code);
+        console.error('STDERR:', err);
+        console.error('STDOUT:', out);
+        return res.status(500).send(err || 'Audio processing failed');
+      }
+      
+      try {
+        // Try to find JSON in output
+        const lines = out.trim().split('\n');
+        console.log('Output lines:', lines.length);
+        
+        let payload = null;
+        for (let i = lines.length - 1; i >= 0; i--) {
+          try {
+            if (lines[i].trim().startsWith('{')) {
+              payload = JSON.parse(lines[i]);
+              console.log('Found JSON at line', i);
+              break;
+            }
+          } catch {}
+        }
+        
+        if (!payload) {
+          throw new Error('No valid JSON found in output');
+        }
+        
+        console.log('\n=== PARSED PAYLOAD ===');
+        console.log('Success:', payload.success);
+        console.log('Number of tracks:', payload.tracks ? payload.tracks.length : 0);
+        
+        if (payload.tracks) {
+          payload.tracks.forEach((track, i) => {
+            console.log(`Track ${i}:`, {
+              stem: track.stem,
+              instrument: track.instrument,
+              note_count: track.note_count,
+              midi_path: track.midi_path,
+              audio_path: track.audio_path
+            });
+          });
+          
+          // Adjust paths to be relative to the API
+          payload.tracks = payload.tracks.map(track => ({
+            ...track,
+            midi_path: `/midi/${requestId}/${path.basename(track.midi_path)}`,
+            audio_path: `/audio/${requestId}/${path.basename(track.audio_path)}`
+          }));
+        }
+        
+        payload.requestId = requestId;
+        console.log('\n=== SENDING RESPONSE ===');
+        console.log('Final track count:', payload.tracks ? payload.tracks.length : 0);
+        return res.json(payload);
+      } catch (e) {
+        console.error('ERROR: Failed to parse audio processing output');
+        console.error('Parse error:', e.message);
+        console.error('Raw output:', out);
+        return res.status(500).send('Invalid audio processing output');
+      }
+    });
+  } catch (e) {
+    console.error('Separation error:', e);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /midi/:requestId/:filename — serve generated MIDI from separation
+app.get('/midi/:requestId/:filename', (req, res) => {
+  const f = req.params.filename;
+  const p = path.join(OUTPUT_DIR, req.params.requestId, f);
+  if (!fs.existsSync(p)) return res.status(404).json({ error: 'Not found' });
+  return res.sendFile(p);
+});
+
+// GET /audio/:requestId/:filename — serve separated audio stems
+app.get('/audio/:requestId/:filename', (req, res) => {
+  const f = req.params.filename;
+  const p = path.join(OUTPUT_DIR, req.params.requestId, f);
   if (!fs.existsSync(p)) return res.status(404).json({ error: 'Not found' });
   return res.sendFile(p);
 });
@@ -380,6 +561,17 @@ app.post('/api/auth/request-phone-code', async (req, res) => {
 
 app.post('/api/auth/verify-phone-code', async (req, res) => {
   res.status(501).json({ message: 'Phone verification not yet implemented' });
+});
+
+// Serve Loop Arranger workspace at root
+app.get('/', (req, res) => {
+  const workspacePath = path.join(__dirname, '../frontend/workspace.html');
+  return res.sendFile(workspacePath);
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  return res.json({ status: 'ok' });
 });
 
 // ==================== User Endpoints ====================
