@@ -387,7 +387,7 @@ const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const getRandomFloat = (min, max) => Math.random() * (max - min) + min;
 
-// ---------- Real Audio Transcription Modal ----------
+// ---------- Mock Transcription Modal ----------
 
 /**
  * @param {{ onSave: (p: Pattern) => void, onExit: () => void }} props 
@@ -396,11 +396,49 @@ function AudioTranscriber({ onSave, onExit }) {
   const [file, setFile] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [transcriptionOptions, setTranscriptionOptions] = useState({
-    confidenceThreshold: 0.3,
-    minNoteDuration: 0.1,
-    bpm: DEFAULT_BPM
-  });
+
+  /**
+   * Mock function to simulate Basic Pitch transcription
+   * @param {string} fileName 
+   */
+  const mockTranscription = (fileName) => {
+    // Mock the output of the Python script (note_events)
+    const notes = [];
+    // Simulate notes over 8 bars (32 beats)
+    const totalBeats = MAX_TRANSCRIPTION_BARS * BEATS_PER_BAR;
+    const numNotes = getRandomInt(40, 100); 
+
+    for (let i = 0; i < numNotes; i++) {
+        // start time in beats
+        const start = getRandomFloat(0, totalBeats - 0.5); 
+        // duration in beats
+        const duration = getRandomFloat(0.1, 1);
+        // MIDI pitch from C3 (48) to C5 (72)
+        const note = getRandomInt(48, 72); 
+        
+        notes.push({ 
+            id: uid(), 
+            note: note, 
+            start: parseFloat(start.toFixed(4)), 
+            duration: parseFloat(duration.toFixed(4)) 
+        });
+    }
+
+    // Sort notes by start time
+    notes.sort((a, b) => a.start - b.start);
+    
+    // Calculate the actual duration of the transcribed data
+    let maxEnd = 0;
+    notes.forEach(n => { maxEnd = Math.max(maxEnd, n.start + n.duration); });
+    // Round up the length to the nearest bar (4 beats)
+    const lengthBars = Math.ceil(maxEnd / BEATS_PER_BAR);
+
+    return {
+        notes,
+        audioLengthBars: clamp(lengthBars, 1, MAX_TRANSCRIPTION_BARS),
+        originalFileName: fileName,
+    };
+  };
 
   const handleFileChange = (e) => {
     const uploadedFile = e.target.files?.[0];
@@ -415,7 +453,7 @@ function AudioTranscriber({ onSave, onExit }) {
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!file) {
       setError("Please select an audio file first.");
       return;
@@ -424,157 +462,64 @@ function AudioTranscriber({ onSave, onExit }) {
     setIsLoading(true);
     setError(null);
 
-    try {
-      // Dynamically import the transcriber
-      const { AudioTranscriber } = await import('./audio-transcriber.js');
-      const transcriberInstance = new AudioTranscriber();
-      
-      // Initialize transcriber
-      await transcriberInstance.init();
-      
-      // Perform real transcription
-      const transcriptionData = await transcriberInstance.transcribeAudio(file, {
-        confidenceThreshold: transcriptionOptions.confidenceThreshold,
-        minNoteDuration: transcriptionOptions.minNoteDuration,
-        bpm: transcriptionOptions.bpm,
-        maxBars: MAX_TRANSCRIPTION_BARS
-      });
+    // Simulate network delay and processing (as actual ML transcription isn't possible)
+    setTimeout(() => {
+        try {
+            const transcriptionData = mockTranscription(file.name);
 
-      // Convert to the expected format
-      const formattedNotes = transcriptionData.notes.map(note => ({
-        id: note.id,
-        note: note.note,
-        start: note.start,
-        duration: note.duration
-      }));
-
-      /** @type {Pattern} */
-      const newPattern = {
-        id: uid(),
-        name: `Transcribed: ${file.name.substring(0, 20)}...`,
-        instrument: "transcribed",
-        // @ts-ignore
-        data: {
-          type: "transcribed",
-          notes: formattedNotes,
-          audioLengthBars: transcriptionData.audioLengthBars,
-          originalFileName: transcriptionData.originalFileName,
-        },
-      };
-      
-      onSave(newPattern);
-      // The modal will close via the onSave handler in the parent
-    } catch (e) {
-      console.error("Audio transcription failed:", e);
-      setError(`Transcription failed: ${e.message}`);
-    } finally {
-      setIsLoading(false);
-    }
+            /** @type {Pattern} */
+            const newPattern = {
+                id: uid(),
+                name: `Transcribed: ${file.name.substring(0, 20)}...`,
+                instrument: "transcribed",
+                // @ts-ignore
+                data: {
+                    type: "transcribed",
+                    notes: transcriptionData.notes,
+                    audioLengthBars: transcriptionData.audioLengthBars,
+                    originalFileName: transcriptionData.originalFileName,
+                },
+            };
+            
+            onSave(newPattern);
+            // The modal will close via the onSave handler in the parent
+        } catch (e) {
+            console.error("Transcription simulation failed:", e);
+            setError("An error occurred during simulated transcription.");
+        } finally {
+            setIsLoading(false);
+        }
+    }, 2000); // 2 second mock processing time
   };
 
   return (
-    <div className="p-6 bg-zinc-800 rounded-xl shadow-2xl w-full max-w-2xl text-white">
+    <div className="p-6 bg-zinc-800 rounded-xl shadow-2xl w-full max-w-lg text-white">
       <h2 className="text-2xl font-bold mb-4 text-lime-400">Audio Transcription</h2>
       <p className="mb-4 text-sm opacity-70">
-        Upload an audio file (MP3, WAV, etc.) to convert its melody into MIDI notes using real-time pitch detection.
+        Upload an audio file (MP3, WAV, etc.) to convert its main melody into a non-editable timeline clip using a simulated transcription engine (Basic Pitch).
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* File Upload Section */}
-        <div>
-          <label htmlFor="audio-file" className="block text-sm font-medium mb-2">Select Audio File:</label>
-          <input
-            id="audio-file"
-            type="file"
-            accept="audio/*"
-            onChange={handleFileChange}
-            className="w-full text-sm text-zinc-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-zinc-700 file:text-lime-300 hover:file:bg-zinc-600"
-          />
-          {file && (
-            <div className="mt-2 p-2 bg-zinc-700 rounded text-sm">
-              <p className="text-lime-500">✓ Selected: {file.name}</p>
-              <p className="text-zinc-400">Size: {(file.size / 1024 / 1024).toFixed(2)} MB</p>
-            </div>
-          )}
-        </div>
-
-        {/* Transcription Options */}
-        <div>
-          <h3 className="text-lg font-medium mb-3 text-purple-400">Transcription Settings</h3>
-          
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium mb-1">Confidence Threshold</label>
-              <input
-                type="range"
-                min="0.1"
-                max="0.9"
-                step="0.1"
-                value={transcriptionOptions.confidenceThreshold}
-                onChange={(e) => setTranscriptionOptions(prev => ({
-                  ...prev,
-                  confidenceThreshold: parseFloat(e.target.value)
-                }))}
-                className="w-full"
-              />
-              <div className="flex justify-between text-xs text-zinc-400 mt-1">
-                <span>Low (0.1)</span>
-                <span className="text-lime-400">{transcriptionOptions.confidenceThreshold}</span>
-                <span>High (0.9)</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Min Note Duration (beats)</label>
-              <input
-                type="range"
-                min="0.05"
-                max="0.5"
-                step="0.05"
-                value={transcriptionOptions.minNoteDuration}
-                onChange={(e) => setTranscriptionOptions(prev => ({
-                  ...prev,
-                  minNoteDuration: parseFloat(e.target.value)
-                }))}
-                className="w-full"
-              />
-              <div className="flex justify-between text-xs text-zinc-400 mt-1">
-                <span>Short (0.05)</span>
-                <span className="text-lime-400">{transcriptionOptions.minNoteDuration}</span>
-                <span>Long (0.5)</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">BPM</label>
-              <input
-                type="number"
-                min="60"
-                max="200"
-                value={transcriptionOptions.bpm}
-                onChange={(e) => setTranscriptionOptions(prev => ({
-                  ...prev,
-                  bpm: parseInt(e.target.value) || DEFAULT_BPM
-                }))}
-                className="w-full bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-sm"
-              />
-            </div>
-          </div>
-        </div>
+      <div className="mb-4">
+        <label htmlFor="audio-file" className="block text-sm font-medium mb-2">Select Audio File:</label>
+        <input
+          id="audio-file"
+          type="file"
+          accept="audio/*"
+          onChange={handleFileChange}
+          className="w-full text-sm text-zinc-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-zinc-700 file:text-lime-300 hover:file:bg-zinc-600"
+        />
+        {file && (
+            <p className="mt-2 text-lime-500 text-sm">Selected: {file.name} (Ready to transcribe)</p>
+        )}
       </div>
 
       {error && (
-        <div className="mt-4 bg-red-900/50 border border-red-500 p-3 rounded text-sm">
-          <div className="flex items-center">
-            <svg className="w-5 h-5 mr-2 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-            </svg>
-            {error}
-          </div>
+        <div className="bg-red-900/50 border border-red-500 p-2 rounded text-sm mb-4">
+          {error}
         </div>
       )}
 
-      <div className="flex justify-end gap-3 mt-6">
+      <div className="flex justify-end gap-3">
         <button 
           onClick={onExit} 
           className="px-4 py-2 bg-zinc-600 rounded-lg hover:bg-zinc-700 transition"
@@ -585,24 +530,14 @@ function AudioTranscriber({ onSave, onExit }) {
         <button 
           onClick={handleSubmit} 
           disabled={!file || isLoading}
-          className="px-6 py-2 bg-lime-500 text-black font-semibold rounded-lg hover:bg-lime-400 transition disabled:opacity-50 flex items-center gap-2"
+          className="px-4 py-2 bg-lime-500 text-black font-semibold rounded-lg hover:bg-lime-400 transition disabled:opacity-50"
         >
           {isLoading ? (
-            <>
-              <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Analyzing Audio...
-            </>
-          ) : (
-            <>
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-              Transcribe & Add
-            </>
-          )}
+            <span className="flex items-center">
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+              Transcribing...
+            </span>
+          ) : 'Transcribe & Add'}
         </button>
       </div>
     </div>
