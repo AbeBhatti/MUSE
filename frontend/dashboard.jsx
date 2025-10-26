@@ -45,7 +45,7 @@ const MAX_TRANSCRIPTION_BARS = 8; // Max bars for transcribed clip
 
 /** @typedef {Omit<TimelineClip, 'id'>} ClipboardClip */
 
-/** @typedef {{ type: "library" } | { type: "sequencer", instrument: Exclude<InstrumentId, "transcribed"> } | { type: "transcribe" }} View */
+/** @typedef {{ type: "library" } | { type: "sequencer", instrument: Exclude<InstrumentId, "transcribed"> } | { type: "transcribe" } | { type: "edit", patternId: string }} View */
 
 // ---------- Audio Engine ----------
 
@@ -65,6 +65,7 @@ class AudioEngine {
   isLoopingRef;
   onStopRef;
   instrumentParamsRef;
+  metronomeOnRef;
 
   /**
    * @param {React.MutableRefObject<Pattern[]>} patternsRef
@@ -73,14 +74,16 @@ class AudioEngine {
    * @param {React.MutableRefObject<boolean>} isLoopingRef
    * @param {React.MutableRefObject<() => void>} onStopRef
    * @param {React.MutableRefObject<Object>} instrumentParamsRef
+   * @param {React.MutableRefObject<boolean>} metronomeOnRef
    */
-  constructor(patternsRef, clipsRef, numBarsRef, isLoopingRef, onStopRef, instrumentParamsRef) {
+  constructor(patternsRef, clipsRef, numBarsRef, isLoopingRef, onStopRef, instrumentParamsRef, metronomeOnRef) {
     this.patternsRef = patternsRef;
     this.clipsRef = clipsRef;
     this.numBarsRef = numBarsRef;
     this.isLoopingRef = isLoopingRef;
     this.onStopRef = onStopRef;
     this.instrumentParamsRef = instrumentParamsRef;
+    this.metronomeOnRef = metronomeOnRef;
   }
 
   init() {
@@ -161,6 +164,32 @@ class AudioEngine {
 
   playClap(time) {
     this.playSnare(time); // Use snare as a proxy for clap
+  }
+
+  /**
+   * Play a metronome click sound
+   * @param {number} time - when to play the click
+   * @param {boolean} isDownbeat - whether this is beat 1 (louder click)
+   */
+  playMetronomeClick(time, isDownbeat) {
+    if (!this.ctx) return;
+    
+    // Create a short click sound
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    
+    // Higher frequency for accent on downbeat
+    const freq = isDownbeat ? 800 : 600;
+    osc.frequency.setValueAtTime(freq, time);
+    
+    // Louder volume for downbeat
+    const volume = isDownbeat ? 0.15 : 0.08;
+    gain.gain.setValueAtTime(volume, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+    
+    osc.connect(gain).connect(this.ctx.destination);
+    osc.start(time);
+    osc.stop(time + 0.05);
   }
 
   /**
@@ -342,6 +371,16 @@ class AudioEngine {
     const currentBar = Math.floor(step / STEPS_PER_BAR);
     // const stepInBar = step % STEPS_PER_BAR;
     const currentBeatInProject = step / STEPS_PER_BEAT;
+    
+    // Play metronome if enabled
+    if (this.metronomeOnRef?.current) {
+      // Check if this is on a beat (every 4 steps)
+      if (step % 4 === 0) {
+        // Check if this is beat 1 (every 16 steps)
+        const isDownbeat = step % 16 === 0;
+        this.playMetronomeClick(time, isDownbeat);
+      }
+    }
     
     const clips = this.clipsRef.current;
     const patterns = this.patternsRef.current;
@@ -700,14 +739,21 @@ function AudioTranscriber({ onSave, onExit }) {
 // ... (DrumSequencer, MelodySequencer are kept as is) ...
 
 /**
- * @param {{ onSave: (p: Pattern) => void, onExit: () => void, engine: AudioEngine | null, patterns: Pattern[] }} props 
+ * @param {{ onSave: (p: Pattern) => void, onExit: () => void, engine: AudioEngine | null, patterns: Pattern[], initialPattern?: Pattern }} props 
  */
-function DrumSequencer({ onSave, onExit, engine, patterns }) {
-  const [grid, setGrid] = useState(() => createEmptyGrid(4));
-  const [name, setName] = useState(
+function DrumSequencer({ onSave, onExit, engine, patterns, initialPattern }) {
+  const [grid, setGrid] = useState(() => 
+    initialPattern?.data?.type === 'drums' ? initialPattern.data.grid : createEmptyGrid(4)
+  );
+  const [name, setName] = useState(initialPattern?.name || 
     `Drum Pattern ${patterns.filter(p => p.instrument === "drums").length + 1}`
   );
-  const [patternSteps, setPatternSteps] = useState(STEPS_PER_BAR); // 16 by default
+  const [patternSteps, setPatternSteps] = useState(() => {
+    if (initialPattern?.data?.type === 'drums') {
+      return initialPattern.data.grid[0]?.length || STEPS_PER_BAR;
+    }
+    return STEPS_PER_BAR;
+  });
   const soundMap = ["clap", "hat", "snare", "kick"];
 
   const toggle = (row, step) => {
@@ -743,7 +789,7 @@ function DrumSequencer({ onSave, onExit, engine, patterns }) {
 
   const save = () => {
     onSave({
-      id: uid(),
+      id: initialPattern?.id || uid(),
       name: name.trim() || "Drum Pattern",
       instrument: "drums",
       // @ts-ignore
@@ -811,14 +857,21 @@ function DrumSequencer({ onSave, onExit, engine, patterns }) {
 }
 
 /**
- * @param {{ instrument: "bass" | "synth", onSave: (p: Pattern) => void, onExit: () => void, engine: AudioEngine | null, patterns: Pattern[] }} props 
+ * @param {{ instrument: "bass" | "synth", onSave: (p: Pattern) => void, onExit: () => void, engine: AudioEngine | null, patterns: Pattern[], initialPattern?: Pattern }} props 
  */
-function MelodySequencer({ instrument, onSave, onExit, engine, patterns }) {
-  const [grid, setGrid] = useState(() => createEmptyGrid(6));
-  const [name, setName] = useState(
+function MelodySequencer({ instrument, onSave, onExit, engine, patterns, initialPattern }) {
+  const [grid, setGrid] = useState(() => 
+    initialPattern?.data?.type === 'melody' ? initialPattern.data.grid : createEmptyGrid(6)
+  );
+  const [name, setName] = useState(initialPattern?.name || 
     `${instrument === 'bass' ? 'Bass' : 'Synth'} Pattern ${patterns.filter(p => p.instrument === instrument).length + 1}`
   );
-  const [patternSteps, setPatternSteps] = useState(STEPS_PER_BAR); // 16 by default
+  const [patternSteps, setPatternSteps] = useState(() => {
+    if (initialPattern?.data?.type === 'melody') {
+      return initialPattern.data.grid[0]?.length || STEPS_PER_BAR;
+    }
+    return STEPS_PER_BAR;
+  });
   const noteMap = MELODY_NOTE_MAP;
 
   const toggle = (gridRow, step) => {
@@ -859,7 +912,7 @@ function MelodySequencer({ instrument, onSave, onExit, engine, patterns }) {
 
   const save = () => {
     onSave({
-      id: uid(),
+      id: initialPattern?.id || uid(),
       name: name.trim() || "Melody Pattern",
       instrument: instrument,
       // @ts-ignore
@@ -942,15 +995,17 @@ function MelodySequencer({ instrument, onSave, onExit, engine, patterns }) {
 }
 
 /**
- * @param {{ onSave: (p: Pattern) => void, onExit: () => void, engine: AudioEngine | null, patterns: Pattern[] }} props 
+ * @param {{ onSave: (p: Pattern) => void, onExit: () => void, engine: AudioEngine | null, patterns: Pattern[], initialPattern?: Pattern }} props 
  */
-function PianoSequencer({ onSave, onExit, engine, patterns }) {
-  const [name, setName] = useState(
+function PianoSequencer({ onSave, onExit, engine, patterns, initialPattern }) {
+  const [name, setName] = useState(initialPattern?.name || 
     `Piano Pattern ${patterns.filter(p => p.instrument === "piano").length + 1}`
   );
   const [isRecording, setIsRecording] = useState(false);
   /** @type {[MidiNote[], React.Dispatch<React.SetStateAction<MidiNote[]>>]} */
-  const [recordedNotes, setRecordedNotes] = useState([]);
+  const [recordedNotes, setRecordedNotes] = useState(() => 
+    initialPattern?.data?.type === 'piano' ? initialPattern.data.notes : []
+  );
   const [recordingBars, setRecordingBars] = useState(PIANO_RECORDING_BARS); // Default to 4 bars
   const recordingStartTime = useRef(0);
   /** @type {React.MutableRefObject<Map<number, number>>} */
@@ -1082,7 +1137,7 @@ function PianoSequencer({ onSave, onExit, engine, patterns }) {
 
   const save = () => {
     onSave({
-      id: uid(),
+      id: initialPattern?.id || uid(),
       name: name.trim() || "Piano Pattern",
       instrument: "piano",
       // @ts-ignore
@@ -1521,7 +1576,8 @@ function LibraryPanel({ onSelectInstrument, patterns, onSelectTranscribe, instru
  * onCopy: () => void, 
  * onCut: () => void, 
  * onPaste: () => void, 
- * onDelete: () => void 
+ * onDelete: () => void,
+ * onEditClip: (clipId: string) => void
  * }} props
  */
 function TimelinePanel({ 
@@ -1536,12 +1592,16 @@ function TimelinePanel({
   onCopy, 
   onCut, 
   onPaste, 
-  onDelete 
+  onDelete,
+  onEditClip
 }) {
   /** @type {InstrumentId[]} */
   const lanes = ["drums", "bass", "synth", "piano", "transcribed"];
   const timelineRef = useRef(null);
   const [dragError, setDragError] = useState(null);
+  const [resizingClipId, setResizingClipId] = useState(null);
+  const [resizeStartX, setResizeStartX] = useState(0);
+  const [resizeStartBars, setResizeStartBars] = useState(0);
   
   const totalWidth = numBars * PIXELS_PER_BAR;
   const playheadLeft = playhead * totalWidth;
@@ -1610,6 +1670,63 @@ function TimelinePanel({
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
   };
+  
+  /**
+   * Handle start of resize drag
+   * @param {React.MouseEvent} e 
+   * @param {TimelineClip} clip 
+   */
+  const onResizeStart = (e, clip) => {
+    e.stopPropagation();
+    setResizingClipId(clip.id);
+    setResizeStartX(e.clientX);
+    setResizeStartBars(clip.bars);
+    setSelectedClipId(clip.id);
+  };
+  
+  /**
+   * Handle mouse move during resize
+   * @param {MouseEvent} e 
+   */
+  const onMouseMove = useCallback((e) => {
+    if (!resizingClipId || !timelineRef.current) return;
+    
+    const deltaX = e.clientX - resizeStartX;
+    const deltaBars = Math.round(deltaX / PIXELS_PER_BAR);
+    const newBars = Math.max(1, resizeStartBars + deltaBars);
+    
+    setClips(currentClips => {
+      const clip = currentClips.find(c => c.id === resizingClipId);
+      if (!clip) return currentClips;
+      
+      // Calculate max bars without going beyond timeline
+      const maxBars = numBars - clip.startBar;
+      const clampedBars = Math.min(newBars, maxBars);
+      
+      return currentClips.map(c => 
+        c.id === resizingClipId ? { ...c, bars: clampedBars } : c
+      );
+    });
+  }, [resizingClipId, resizeStartX, resizeStartBars, numBars]);
+  
+  /**
+   * Handle end of resize drag
+   */
+  const onMouseUp = useCallback(() => {
+    setResizingClipId(null);
+  }, []);
+  
+  // Add global mouse handlers when resizing
+  useEffect(() => {
+    if (resizingClipId) {
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
+    }
+  }, [resizingClipId, onMouseMove, onMouseUp]);
   
   return (
     <div 
@@ -1697,12 +1814,14 @@ function TimelinePanel({
                     const pattern = patterns.find(p => p.id === clip.patternId);
                     
                     const isSelected = clip.id === selectedClipId;
+                    const isResizing = clip.id === resizingClipId;
                     
                     return (
                     <div
                         key={clip.id}
-                        onClick={(e) => { e.stopPropagation(); setSelectedClipId(clip.id); }} 
-                        className={`absolute top-6 bottom-2 rounded-lg shadow p-2 cursor-grab active:cursor-grabbing overflow-hidden transition-all ${
+                        onClick={(e) => { e.stopPropagation(); setSelectedClipId(clip.id); }}
+                        onDoubleClick={(e) => { e.stopPropagation(); onEditClip(clip.patternId); }} 
+                        className={`absolute top-6 bottom-2 rounded-lg shadow p-2 ${isResizing ? 'cursor-ew-resize' : 'cursor-grab active:cursor-grabbing'} overflow-visible transition-all ${
                             clip.instrument === 'drums' ? 'bg-emerald-600/80' : 
                             clip.instrument === 'bass' ? 'bg-fuchsia-600/80' : 
                             clip.instrument === 'synth' ? 'bg-cyan-600/80' : 
@@ -1719,6 +1838,16 @@ function TimelinePanel({
                         <span className="text-sm font-medium truncate pointer-events-none">
                         {pattern ? pattern.name : clip.patternId}
                         </span>
+                        
+                        {/* Resize handle */}
+                        <div
+                          onMouseDown={(e) => onResizeStart(e, clip)}
+                          className={`absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/20 transition-colors ${
+                            isSelected ? 'block' : 'hidden'
+                          }`}
+                          style={{ cursor: 'ew-resize' }}
+                          title="Drag to resize"
+                        />
                     </div>
                     )
                 })}
@@ -1747,7 +1876,6 @@ function LoopArranger() {
   const [numBars, setNumBars] = useState(NUM_BARS_DEFAULT);
   const [isLooping, setIsLooping] = useState(true);
   const [metronomeOn, setMetronomeOn] = useState(false);
-  const [tapTimes, setTapTimes] = useState([]);
   /** @type {[View, React.Dispatch<React.SetStateAction<View>>]} */
   const [view, setView] = useState({ type: "library" });
   /** @type {[Pattern[], React.Dispatch<React.SetStateAction<Pattern[]>>]} */
@@ -1776,6 +1904,7 @@ function LoopArranger() {
   const numBarsRef = useRef(numBars);
   const isLoopingRef = useRef(isLooping);
   const instrumentParamsRef = useRef(instrumentParams);
+  const metronomeOnRef = useRef(metronomeOn);
 
   const onStopRef = useRef(() => {});
 
@@ -1793,6 +1922,7 @@ function LoopArranger() {
   useEffect(() => { numBarsRef.current = numBars; }, [numBars]);
   useEffect(() => { isLoopingRef.current = isLooping; }, [isLooping]);
   useEffect(() => { instrumentParamsRef.current = instrumentParams; }, [instrumentParams]);
+  useEffect(() => { metronomeOnRef.current = metronomeOn; }, [metronomeOn]);
 
   const engine = useMemo(() => new AudioEngine(
     patternsRef,
@@ -1800,7 +1930,8 @@ function LoopArranger() {
     numBarsRef,
     isLoopingRef,
     onStopRef,
-    instrumentParamsRef
+    instrumentParamsRef,
+    metronomeOnRef
   ), []);
   
   useEffect(() => {
@@ -1857,37 +1988,6 @@ function LoopArranger() {
   const handleBpmChange = (newBpm) => {
     const clamped = clamp(newBpm, 40, 240);
     setBpm(clamped);
-  };
-
-  /**
-   * Tap tempo - calculate BPM from tap intervals
-   */
-  const handleTapTempo = () => {
-    const now = Date.now();
-    const newTapTimes = [...tapTimes, now].slice(-4); // Keep last 4 taps
-    setTapTimes(newTapTimes);
-
-    if (newTapTimes.length >= 2) {
-      // Calculate average interval between taps
-      const intervals = [];
-      for (let i = 1; i < newTapTimes.length; i++) {
-        intervals.push(newTapTimes[i] - newTapTimes[i - 1]);
-      }
-      const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-      const calculatedBpm = Math.round(60000 / avgInterval);
-      handleBpmChange(calculatedBpm);
-    }
-
-    // Reset tap times after 2 seconds of inactivity
-    setTimeout(() => {
-      setTapTimes(times => {
-        const lastTap = times[times.length - 1];
-        if (lastTap && Date.now() - lastTap > 2000) {
-          return [];
-        }
-        return times;
-      });
-    }, 2000);
   };
 
   // --- Clip Editing Handlers ---
@@ -1972,23 +2072,33 @@ function LoopArranger() {
    * @param {Pattern} pattern 
    */
   const onSavePattern = (pattern) => {
-    setPatterns(p => [...p, pattern]);
-    setView({ type: "library" });
+    // Check if we're editing an existing pattern
+    const existingPattern = patterns.find(p => p.id === pattern.id);
     
-    // Auto-place transcribed clip on timeline at bar 0
-    if (pattern.instrument === 'transcribed') {
-        // @ts-ignore
-        const clipBars = pattern.data.audioLengthBars;
-        /** @type {TimelineClip} */
-        const newClip = {
-            id: uid(),
-            patternId: pattern.id,
-            instrument: 'transcribed',
-            startBar: 0,
-            bars: clipBars,
-        };
-        setClips(c => [...c, newClip]);
+    if (existingPattern) {
+      // Update existing pattern
+      setPatterns(p => p.map(pat => pat.id === pattern.id ? pattern : pat));
+    } else {
+      // Create new pattern
+      setPatterns(p => [...p, pattern]);
+      
+      // Auto-place transcribed clip on timeline at bar 0
+      if (pattern.instrument === 'transcribed') {
+          // @ts-ignore
+          const clipBars = pattern.data.audioLengthBars;
+          /** @type {TimelineClip} */
+          const newClip = {
+              id: uid(),
+              patternId: pattern.id,
+              instrument: 'transcribed',
+              startBar: 0,
+              bars: clipBars,
+          };
+          setClips(c => [...c, newClip]);
+      }
     }
+    
+    setView({ type: "library" });
   };
   
   const renderSequencer = () => {
@@ -1997,6 +2107,18 @@ function LoopArranger() {
     let component;
     if (view.type === "transcribe") {
         component = <AudioTranscriber onSave={onSavePattern} onExit={() => setView({type: 'library'})} />;
+    } else if (view.type === "edit") {
+      // Edit mode - find the pattern and open appropriate sequencer
+      const patternToEdit = patterns.find(p => p.id === view.patternId);
+      if (patternToEdit) {
+        if (patternToEdit.instrument === "drums") {
+          component = <DrumSequencer onSave={onSavePattern} onExit={() => setView({type: 'library'})} engine={engine} patterns={patterns} initialPattern={patternToEdit} />;
+        } else if (patternToEdit.instrument === "bass" || patternToEdit.instrument === "synth") {
+          component = <MelodySequencer instrument={patternToEdit.instrument} onSave={onSavePattern} onExit={() => setView({type: 'library'})} engine={engine} patterns={patterns} initialPattern={patternToEdit} />;
+        } else if (patternToEdit.instrument === "piano") {
+          component = <PianoSequencer onSave={onSavePattern} onExit={() => setView({type: 'library'})} engine={engine} patterns={patterns} initialPattern={patternToEdit} />;
+        }
+      }
     } else if (view.type === "sequencer") {
       if (view.instrument === "drums") {
         component = <DrumSequencer onSave={onSavePattern} onExit={() => setView({type: 'library'})} engine={engine} patterns={patterns} />;
@@ -2076,13 +2198,6 @@ function LoopArranger() {
                 className="w-24 h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-lime-500"
               />
               <button
-                onClick={handleTapTempo}
-                className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-xs font-medium transition-all active:scale-95"
-                title="Tap to set tempo"
-              >
-                TAP
-              </button>
-              <button
                 onClick={() => setMetronomeOn(!metronomeOn)}
                 className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
                   metronomeOn ? 'bg-lime-600 text-black' : 'bg-zinc-700 hover:bg-zinc-600'
@@ -2132,6 +2247,7 @@ function LoopArranger() {
             onCut={onCut}
             onPaste={onPaste}
             onDelete={onDelete}
+            onEditClip={(patternId) => setView({ type: "edit", patternId })}
           />
         </div>
         
