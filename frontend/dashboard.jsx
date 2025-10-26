@@ -1,5 +1,6 @@
-// Import React for ES modules
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+// Use global React from UMD build when embedded via script tags
+// Note: React is loaded from CDN in workspace.html before this script
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 /**
  * Loop Arranger (Pattern Sequencer)
@@ -41,8 +42,9 @@ const API_BASE =
 /** @typedef {{type: "piano", notes: MidiNote[]}} PianoPattern */
 /** @typedef {{type: "transcribed", notes: MidiNote[], audioLengthBars: number, originalFileName: string}} TranscribedPattern */
 /** @typedef {{type: "vocals", audioBuffer: AudioBuffer, lengthBars: number, originalFileName: string}} VocalPattern */
+/** @typedef {{type: "audio_stem", instrument: InstrumentId, audioBuffer: AudioBuffer, lengthBars: number, originalFileName: string, stemName: string, sourceUrl: string}} AudioStemPattern */
 
-/** @typedef {DrumPattern | MelodyPattern | PianoPattern | TranscribedPattern | VocalPattern} PatternData */
+/** @typedef {DrumPattern | MelodyPattern | PianoPattern | TranscribedPattern | VocalPattern | AudioStemPattern} PatternData */
 
 /** @typedef {{id: string, name: string, instrument: InstrumentId, data: PatternData}} Pattern */
 
@@ -50,7 +52,7 @@ const API_BASE =
 
 /** @typedef {Omit<TimelineClip, 'id'>} ClipboardClip */
 
-/** @typedef {{ type: "library" } | { type: "sequencer", instrument: Exclude<InstrumentId, "transcribed" | "vocals"> } | { type: "transcribe" } | { type: "record_vocals" } | { type: "edit", patternId: string }} View */
+/** @typedef {{ type: "library" } | { type: "sequencer", instrument: Exclude<InstrumentId, "transcribed" | "vocals"> } | { type: "transcribe" } | { type: "record_vocals" } | { type: "stem_import" } | { type: "edit", patternId: string }} View */
 
 // ---------- Audio Engine ----------
 
@@ -71,7 +73,7 @@ class AudioEngine {
   onStopRef;
   instrumentParamsRef;
   metronomeOnRef;
-  vocalsMap;
+  audioClipMap;
 
   /**
    * @param {React.MutableRefObject<Pattern[]>} patternsRef
@@ -90,7 +92,7 @@ class AudioEngine {
     this.onStopRef = onStopRef;
     this.instrumentParamsRef = instrumentParamsRef;
     this.metronomeOnRef = metronomeOnRef;
-    this.vocalsMap = new Map(); // Store vocal audio buffers
+    this.audioClipMap = new Map(); // Store decoded audio buffers for vocals & stems
   }
 
   init() {
@@ -170,33 +172,33 @@ class AudioEngine {
   }
 
   /**
-   * Play vocal audio from a pattern
-   * @param {string} patternId - The pattern ID containing the vocal audio
-   * @param {number} time - When to play the audio
-   * @param {number} offset - Offset in bars from clip start
+   * Play an audio clip (vocals or imported stem) from the buffer cache.
+   * @param {string} patternId
+   * @param {number} time
+   * @param {number} offsetBars
+   * @param {InstrumentId} instrument
    */
-  playVocal(patternId, time, offset) {
+  playAudioClip(patternId, time, offsetBars, instrument) {
     if (!this.ctx) return;
-    const buffer = this.vocalsMap.get(patternId);
+    const buffer = this.audioClipMap.get(patternId);
     if (!buffer) return;
 
-    const params = this.instrumentParamsRef?.current?.vocals || { volume: 0.8, pan: 0 };
+    const params =
+      this.instrumentParamsRef?.current?.[instrument] ||
+      this.instrumentParamsRef?.current?.vocals ||
+      { volume: 0.8, pan: 0 };
 
     const source = this.ctx.createBufferSource();
     const gain = this.ctx.createGain();
     const panner = this.ctx.createStereoPanner();
 
     source.buffer = buffer;
-    
-    // Calculate offset time in seconds
-    const offsetTime = (offset * BEATS_PER_BAR) * this.beatsToSec(1);
-    
-    gain.gain.setValueAtTime(params.volume || 0.8, time);
-    panner.pan.value = params.pan || 0;
+    const offsetTime = (offsetBars * BEATS_PER_BAR) * this.beatsToSec(1);
+
+    gain.gain.setValueAtTime(params.volume ?? 0.8, time);
+    panner.pan.value = params.pan ?? 0;
 
     source.connect(gain).connect(panner).connect(this.ctx.destination);
-    
-    // Start playing from the offset
     source.start(time, Math.max(0, offsetTime));
   }
 
@@ -509,17 +511,17 @@ class AudioEngine {
         }
       }
 
-      // Handle Vocal patterns
-      if (patternData.type === "vocals") {
-        // Play vocal audio if we're at the start of the clip
-        if (currentBar === clip.startBar) {
-          const currentBeatInPattern = currentBeatInProject - clip.startBar * BEATS_PER_BAR;
-          // Only play at the start of the clip (beat 0)
-          if (Math.floor(currentBeatInPattern) === 0 && (currentBeatInPattern % 1) < (1 / STEPS_PER_BEAT)) {
-            // @ts-ignore
-            const lengthBars = patternData.lengthBars;
-            const offsetBars = 0; // Start from beginning
-            this.playVocal(clip.patternId, time, offsetBars);
+      // Handle audio clip patterns (vocals + imported stems)
+      if (patternData.type === "vocals" || patternData.type === "audio_stem") {
+        const beatsFromClipStart = currentBeatInProject - clip.startBar * BEATS_PER_BAR;
+        if (beatsFromClipStart >= 0) {
+          const clipBeats = (clip.bars || 1) * BEATS_PER_BAR;
+          const positionInClipBeats = clipBeats > 0 ? (beatsFromClipStart % clipBeats) : 0;
+          const lookahead = 1 / STEPS_PER_BEAT;
+
+          if (positionInClipBeats < lookahead) {
+            const offsetBars = positionInClipBeats / BEATS_PER_BAR;
+            this.playAudioClip(clip.patternId, time, offsetBars, clip.instrument);
           }
         }
       }
@@ -784,11 +786,255 @@ function AudioTranscriber({ onSave, onExit }) {
           ) : 'Transcribe & Add'}
         </button>
       </div>
+
     </div>
   );
 }
 
 // ---------- Vocal Recorder Component ----------
+
+/**
+ * @param {{ onSave: (p: Pattern | Pattern[]) => void, onExit: () => void, engine: AudioEngine, bpm: number }} props
+ */
+function StemImporter({ onSave, onExit, engine, bpm }) {
+  const [file, setFile] = useState(null);
+  const [error, setError] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [stems, setStems] = useState([]);
+  const [selectedStems, setSelectedStems] = useState({});
+  const [jobId, setJobId] = useState(null);
+
+  const onFileChange = (e) => {
+    const uploaded = e.target.files?.[0];
+    if (!uploaded) {
+      setFile(null);
+      return;
+    }
+    if (!uploaded.type.startsWith('audio/') && !uploaded.name.toLowerCase().endsWith('.mp3')) {
+      setError('Please upload an audio file (MP3/WAV).');
+      setFile(null);
+      return;
+    }
+    setFile(uploaded);
+    setError(null);
+    setStems([]);
+    setSelectedStems({});
+    setJobId(null);
+  };
+
+  const splitAudio = async () => {
+    if (!file) {
+      setError('Select an MP3 or WAV first.');
+      return;
+    }
+    setIsUploading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`${API_BASE}/stems/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `Stem separation failed (${response.status})`);
+      }
+
+      const payload = await response.json();
+      const initialSelection = {};
+      payload.stems.forEach((stem) => {
+        initialSelection[stem.id] = true;
+      });
+
+      setStems(payload.stems);
+      setSelectedStems(initialSelection);
+      setJobId(payload.jobId);
+    } catch (err) {
+      console.error('Stem separation error:', err);
+      setError(err.message || 'Stem separation failed. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const toggleStem = (stemId) => {
+    setSelectedStems((prev) => ({
+      ...prev,
+      [stemId]: !prev[stemId],
+    }));
+  };
+
+  const formatDuration = (seconds) => {
+    if (!seconds || Number.isNaN(seconds)) return '—';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
+  };
+
+  const importSelectedStems = async () => {
+    const chosen = stems.filter((stem) => selectedStems[stem.id]);
+    if (!chosen.length) {
+      setError('Select at least one stem to import.');
+      return;
+    }
+
+    setIsImporting(true);
+    setError(null);
+
+    try {
+      engine.init?.();
+      if (engine.resumeCtx) {
+        await engine.resumeCtx();
+      }
+      if (!engine.ctx) {
+        throw new Error('Audio engine not initialized. Reload the workspace and try again.');
+      }
+
+      const secondsPerBar = BEATS_PER_BAR * (60 / (bpm || DEFAULT_BPM));
+      const newPatterns = [];
+
+      for (const stem of chosen) {
+        const stemUrl = `${API_BASE}${stem.url}`;
+        const res = await fetch(stemUrl);
+        if (!res.ok) {
+          throw new Error(`Failed to download ${stem.displayName}.`);
+        }
+
+        const arrayBuffer = await res.arrayBuffer();
+        const audioBuffer = await engine.ctx.decodeAudioData(arrayBuffer);
+        const durationSeconds = audioBuffer.duration || stem.durationSeconds || 0;
+        const estimatedBars = Math.max(1, Math.ceil(durationSeconds / secondsPerBar));
+        const instrument = stem.instrument || 'transcribed';
+        const patternId = uid();
+
+        /** @type {Pattern} */
+        const pattern = {
+          id: patternId,
+          name: `${stem.displayName} Stem`,
+          instrument,
+          data: {
+            type: "audio_stem",
+            instrument,
+            audioBuffer,
+            lengthBars: estimatedBars,
+            originalFileName: stem.fileName,
+            stemName: stem.stemName,
+            sourceUrl: stemUrl,
+            durationSeconds,
+          },
+        };
+
+        engine.audioClipMap.set(patternId, audioBuffer);
+        newPatterns.push(pattern);
+      }
+
+      onSave(newPatterns);
+    } catch (err) {
+      console.error('Stem import error:', err);
+      setError(err.message || 'Failed to import stems.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const selectedCount = stems.filter((stem) => selectedStems[stem.id]).length;
+
+  return (
+    <div className="p-6 bg-zinc-800 rounded-xl shadow-2xl w-full max-w-3xl text-white space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-lime-400">Split Song into Stems</h2>
+        <button
+          onClick={onExit}
+          className="px-3 py-1 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-lg"
+          disabled={isUploading || isImporting}
+        >
+          Close
+        </button>
+      </div>
+
+      <p className="text-sm opacity-70">
+        Upload an MP3 to extract drums, bass, vocals, and other parts using Demucs.
+        You can then drag the generated stems onto the timeline like any other pattern.
+      </p>
+
+      <div className="bg-zinc-900/60 border border-zinc-700 rounded-lg p-4 space-y-3">
+        <input
+          type="file"
+          accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav"
+          onChange={onFileChange}
+          className="w-full text-sm text-zinc-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-zinc-700 file:text-lime-300 hover:file:bg-zinc-600"
+          disabled={isUploading || isImporting}
+        />
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={splitAudio}
+            className="px-4 py-2 bg-lime-500 text-black font-semibold rounded-lg hover:bg-lime-400 transition disabled:opacity-60"
+            disabled={!file || isUploading || isImporting}
+          >
+            {isUploading ? 'Separating...' : 'Separate into Stems'}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-900/50 border border-red-500 p-3 rounded text-sm">
+          {error}
+        </div>
+      )}
+
+      {stems.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Stems Ready</h3>
+          <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+            {stems.map((stem) => (
+              <div
+                key={stem.id}
+                className="flex items-center justify-between bg-zinc-900/70 border border-zinc-700 rounded-lg p-3 gap-4"
+              >
+                <label className="flex items-center gap-3 flex-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!selectedStems[stem.id]}
+                    onChange={() => toggleStem(stem.id)}
+                    className="accent-lime-500"
+                  />
+                  <div>
+                    <div className="font-medium">
+                      {stem.displayName} <span className="text-xs opacity-60">({stem.instrument})</span>
+                    </div>
+                    <div className="text-xs opacity-60">
+                      Duration: {formatDuration(stem.durationSeconds)} • {(stem.sizeBytes / (1024 * 1024)).toFixed(2)} MB
+                    </div>
+                  </div>
+                </label>
+                <audio src={`${API_BASE}${stem.url}`} controls className="max-w-xs" />
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="text-sm opacity-70">
+              {selectedCount} stem{selectedCount === 1 ? '' : 's'} selected • Job ID: {jobId?.slice(0, 8) || '—'}
+            </div>
+            <button
+              onClick={importSelectedStems}
+              className="px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-400 transition disabled:opacity-60"
+              disabled={!selectedCount || isImporting}
+            >
+              {isImporting ? 'Importing...' : `Import ${selectedCount} Stem${selectedCount === 1 ? '' : 's'}`}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 /**
  * @param {{ onSave: (p: Pattern) => void, onExit: () => void, engine: AudioEngine }} props 
@@ -877,7 +1123,7 @@ function VocalRecorder({ onSave, onExit, engine }) {
       const lengthBars = Math.ceil(durationSeconds / secondsPerBar);
       
       // Store in vocals map
-      engine.vocalsMap.set(uid(), audioBuffer);
+      engine.audioClipMap.set(uid(), audioBuffer);
 
       /** @type {Pattern} */
       const newPattern = {
@@ -894,7 +1140,7 @@ function VocalRecorder({ onSave, onExit, engine }) {
       };
 
       // Store pattern ID in vocals map for playback
-      engine.vocalsMap.set(newPattern.id, audioBuffer);
+      engine.audioClipMap.set(newPattern.id, audioBuffer);
 
       onSave(newPattern);
     } catch (e) {
@@ -1549,9 +1795,9 @@ function PianoSequencer({ onSave, onExit, engine, patterns, initialPattern }) {
 // --- Main App Components ---
 
 /**
- * @param {{ onSelectInstrument: (inst: InstrumentId) => void, patterns: Pattern[], onSelectTranscribe: () => void, onSelectRecordVocals: () => void, instrumentParams: any, setInstrumentParams: any }} props
+ * @param {{ onSelectInstrument: (inst: InstrumentId) => void, patterns: Pattern[], onSelectTranscribe: () => void, onSelectSplitStems: () => void, onSelectRecordVocals: () => void, instrumentParams: any, setInstrumentParams: any }} props
  */
-function LibraryPanel({ onSelectInstrument, patterns, onSelectTranscribe, onSelectRecordVocals, instrumentParams, setInstrumentParams }) {
+function LibraryPanel({ onSelectInstrument, patterns, onSelectTranscribe, onSelectSplitStems, onSelectRecordVocals, instrumentParams, setInstrumentParams }) {
   const [expandedInstrument, setExpandedInstrument] = useState(null);
 
   const instruments = [
@@ -1778,7 +2024,7 @@ function LibraryPanel({ onSelectInstrument, patterns, onSelectTranscribe, onSele
                 onClick={onSelectTranscribe}
                 className="w-full px-4 py-3 rounded-lg font-medium text-left bg-zinc-700 text-white shadow-lg hover:bg-zinc-600 transition-all mt-2"
               >
-                + Add Audio File (MP3/WAV)
+                + Transcribe Audio (MP3/WAV)
               </button>
             )}
           </div>
@@ -1788,6 +2034,12 @@ function LibraryPanel({ onSelectInstrument, patterns, onSelectTranscribe, onSele
       {/* Dedicated Transcribed Audio Section */}
       <div className="mb-4 border-t border-zinc-800 pt-4">
         <h3 className="text-lg font-medium text-purple-400 mb-2">Transcribed Audio</h3>
+        <button
+          onClick={onSelectSplitStems}
+          className="w-full px-4 py-3 mb-3 rounded-lg font-medium text-left bg-purple-500/80 text-white shadow-lg hover:bg-purple-500 transition-all"
+        >
+          🎛️ Split MP3 into Stems
+        </button>
         <div className="mt-2 space-y-1">
             {patterns.filter(p => p.instrument === 'transcribed').map(p => (
                 <div
@@ -1911,12 +2163,13 @@ function TimelinePanel({
     let clipBars = 1;
     if (pattern.instrument === 'piano') {
         clipBars = PIANO_RECORDING_BARS;
+    }
+    if (pattern.data?.type === 'audio_stem') {
+        clipBars = pattern.data.lengthBars || clipBars;
     } else if (pattern.instrument === 'transcribed') {
-        // @ts-ignore
-        clipBars = pattern.data.audioLengthBars;
+        clipBars = pattern.data?.audioLengthBars || clipBars;
     } else if (pattern.instrument === 'vocals') {
-        // @ts-ignore
-        clipBars = pattern.data.lengthBars;
+        clipBars = pattern.data?.lengthBars || clipBars;
     }
 
     /** @type {TimelineClip} */
@@ -2277,6 +2530,12 @@ function LoopArranger() {
   /** @type {[ClipboardClip | null, React.Dispatch<React.SetStateAction<ClipboardClip | null>>]} */
   const [clipboard, setClipboard] = useState(null);
 
+  // Define activeProject based on localStorage or default value
+  const activeProject = useMemo(() => {
+    const projectId = localStorage.getItem('currentProjectId') || 'demo';
+    return { projectId };
+  }, []);
+
   // Per-instrument parameters (volume, pan, pitch, filter, ADSR)
   const [instrumentParams, setInstrumentParams] = useState({
     drums: { volume: 0.8, pan: 0, pitch: 0, filterType: 'none', filterCutoff: 1000, filterResonance: 1, attack: 0.01, decay: 0.1, sustain: 0.7, release: 0.3 },
@@ -2483,49 +2742,53 @@ function LoopArranger() {
 
   // --- Sequencer Modal Handlers ---
   /**
-   * @param {Pattern} pattern 
+   * @param {Pattern | Pattern[]} patternOrPatterns 
    */
-  const onSavePattern = (pattern) => {
-    // Check if we're editing an existing pattern
-    const existingPattern = patterns.find(p => p.id === pattern.id);
-    
-    if (existingPattern) {
-      // Update existing pattern
-      setPatterns(p => p.map(pat => pat.id === pattern.id ? pattern : pat));
-    } else {
-      // Create new pattern
-      setPatterns(p => [...p, pattern]);
-      
-      // Auto-place transcribed clip on timeline at bar 0
+  const onSavePattern = (patternOrPatterns) => {
+    const patternsToSave = Array.isArray(patternOrPatterns) ? patternOrPatterns : [patternOrPatterns];
+
+    setPatterns(prev => {
+      const next = [...prev];
+      patternsToSave.forEach((pattern) => {
+        const idx = next.findIndex(p => p.id === pattern.id);
+        if (idx !== -1) {
+          next[idx] = pattern;
+        } else {
+          next.push(pattern);
+        }
+      });
+      return next;
+    });
+
+    patternsToSave.forEach((pattern) => {
+      const alreadyExists = patterns.some(p => p.id === pattern.id);
+      if (alreadyExists) return;
+
+      let clipBars = 1;
       if (pattern.instrument === 'transcribed') {
-          // @ts-ignore
-          const clipBars = pattern.data.audioLengthBars;
-          /** @type {TimelineClip} */
-          const newClip = {
-              id: uid(),
-              patternId: pattern.id,
-              instrument: 'transcribed',
-              startBar: 0,
-              bars: clipBars,
-          };
-          setClips(c => [...c, newClip]);
+        if (pattern.data?.type === 'transcribed') {
+          clipBars = pattern.data.audioLengthBars;
+        } else if (pattern.data?.type === 'audio_stem') {
+          clipBars = pattern.data.lengthBars;
+        }
+      } else if (pattern.instrument === 'vocals') {
+        if (pattern.data?.type === 'vocals' || pattern.data?.type === 'audio_stem') {
+          clipBars = pattern.data.lengthBars;
+        }
       }
 
-      // Auto-place vocal clip on timeline at bar 0
-      if (pattern.instrument === 'vocals') {
-          // @ts-ignore
-          const clipBars = pattern.data.lengthBars;
-          /** @type {TimelineClip} */
-          const newClip = {
-              id: uid(),
-              patternId: pattern.id,
-              instrument: 'vocals',
-              startBar: 0,
-              bars: clipBars,
-          };
-          setClips(c => [...c, newClip]);
+      if ((pattern.instrument === 'transcribed' || pattern.instrument === 'vocals') && clipBars > 0) {
+        /** @type {TimelineClip} */
+        const newClip = {
+          id: uid(),
+          patternId: pattern.id,
+          instrument: pattern.instrument,
+          startBar: 0,
+          bars: clipBars,
+        };
+        setClips(c => [...c, newClip]);
       }
-    }
+    });
     
     setView({ type: "library" });
   };
@@ -2538,6 +2801,8 @@ function LoopArranger() {
         component = <AudioTranscriber onSave={onSavePattern} onExit={() => setView({type: 'library'})} />;
     } else if (view.type === "record_vocals") {
         component = <VocalRecorder onSave={onSavePattern} onExit={() => setView({type: 'library'})} engine={engine} />;
+    } else if (view.type === "stem_import") {
+        component = <StemImporter onSave={onSavePattern} onExit={() => setView({type: 'library'})} engine={engine} bpm={bpm} />;
     } else if (view.type === "edit") {
       // Edit mode - find the pattern and open appropriate sequencer
       const patternToEdit = patterns.find(p => p.id === view.patternId);
@@ -2682,6 +2947,7 @@ function LoopArranger() {
             // @ts-ignore
             onSelectInstrument={(inst) => setView({ type: "sequencer", instrument: inst })}
             onSelectTranscribe={() => setView({ type: "transcribe" })}
+            onSelectSplitStems={() => setView({ type: "stem_import" })}
             onSelectRecordVocals={() => setView({ type: "record_vocals" })}
             patterns={patterns}
             instrumentParams={instrumentParams}
@@ -2714,6 +2980,8 @@ function LoopArranger() {
         )}
         
       </div>
+
+      {renderSequencer()}
     </div>
   );
 }

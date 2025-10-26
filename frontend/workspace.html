@@ -8,6 +8,9 @@
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React and ReactDOM from CDN (UMD builds) - MUST be loaded BEFORE main module -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script>
     (function enforceAuth() {
       if (!localStorage.getItem('idToken')) {

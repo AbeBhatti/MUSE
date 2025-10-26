@@ -22,7 +22,12 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
         input: 'workspace.html',
-        external: ['/socket.io/socket.io.js', '/collab-client.js']
+        external: (id) => {
+          // Externalize React and socket.io
+          if (id === 'react' || id === 'react-dom' || id === 'React' || id === 'ReactDOM') return true;
+          if (id.includes('/socket.io/') || id.includes('collab-client')) return true;
+          return false;
+        }
     }
   },
   base: '/'

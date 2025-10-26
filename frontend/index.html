@@ -94,17 +94,17 @@
       <h3 class="text-xs font-semibold uppercase text-dim mb-4 tracking-wider">Navigation</h3>
       <ul class="space-y-1 text-sm">
         <li>
-          <a href="#" class="flex items-center space-x-3 p-2 rounded-lg bg-accent-blue/10 text-accent-blue font-medium">
+          <a href="#" onclick="setView('my-projects'); return false;" id="nav-my-projects" class="flex items-center space-x-3 p-2 rounded-lg bg-accent-blue/10 text-accent-blue font-medium">
             My Projects
           </a>
         </li>
         <li>
-          <a href="#" class="flex items-center space-x-3 p-2 rounded-lg text-dim hover:bg-[#22252c] transition">
+          <a href="#" onclick="setView('shared'); return false;" id="nav-shared" class="flex items-center space-x-3 p-2 rounded-lg text-dim hover:bg-[#22252c] transition">
             Shared with Me
           </a>
         </li>
         <li>
-          <a href="#" class="flex items-center space-x-3 p-2 rounded-lg text-dim hover:bg-[#22252c] transition">
+          <a href="#" onclick="setView('trash'); return false;" id="nav-trash" class="flex items-center space-x-3 p-2 rounded-lg text-dim hover:bg-[#22252c] transition">
             Trash
           </a>
         </li>
@@ -117,7 +117,7 @@
       <!-- Recent Projects -->
       <section class="mb-12">
         <div class="flex justify-between items-center mb-6">
-          <h2 class="text-2xl font-bold text-text-light">My Projects</h2>
+          <h2 id="sectionTitle" class="text-2xl font-bold text-text-light">My Projects</h2>
           <div id="projectCount" class="text-sm text-dim"></div>
         </div>
 
@@ -189,6 +189,7 @@
     let currentShareProjectId = null;
     let currentShareProjectName = null;
     let userProjects = [];
+    let currentView = 'my-projects'; // 'my-projects', 'shared', 'trash'
 
     // Get user ID from JWT token
     function getUserIdFromToken() {
@@ -214,14 +215,27 @@
 
       try {
         const token = localStorage.getItem('idToken');
-        const response = await fetch(`${API_BASE}/api/projects/user/${userId}`, {
+        const url = `${API_BASE}/api/projects/user/${userId}`;
+        const response = await fetch(url, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
 
         if (!response.ok) {
-          throw new Error('Failed to load projects');
+          let detail = '';
+          try { detail = (await response.json()).message || ''; } catch {}
+          // If unauthorized, clear tokens and prompt re-login
+          if (response.status === 401) {
+            console.warn('Unauthorized fetching projects. Clearing tokens and redirecting to login.', { url, status: response.status, detail });
+            localStorage.removeItem('idToken');
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            document.getElementById('loadingProjects').innerHTML = '<p class="text-red-400">Session expired. Redirecting to login…</p>';
+            setTimeout(() => window.location.replace(`login.html${window.location.search}${window.location.hash}`), 1000);
+            return;
+          }
+          throw new Error(detail || 'Failed to load projects');
         }
 
         userProjects = await response.json();
@@ -233,17 +247,60 @@
       }
     }
 
+    // Set view and update UI
+    function setView(view) {
+      currentView = view;
+
+      // Update navigation active state
+      document.querySelectorAll('nav a').forEach(a => {
+        a.classList.remove('bg-accent-blue/10', 'text-accent-blue', 'font-medium');
+        a.classList.add('text-dim');
+      });
+
+      const activeNav = document.getElementById(`nav-${view}`);
+      if (activeNav) {
+        activeNav.classList.add('bg-accent-blue/10', 'text-accent-blue', 'font-medium');
+        activeNav.classList.remove('text-dim');
+      }
+
+      // Update section title
+      const titles = {
+        'my-projects': 'My Projects',
+        'shared': 'Shared with Me',
+        'trash': 'Trash'
+      };
+      document.getElementById('sectionTitle').textContent = titles[view] || 'My Projects';
+
+      renderProjects();
+    }
+
     // Render projects in the grid
     function renderProjects() {
       const container = document.getElementById('projectsContainer');
       const countDiv = document.getElementById('projectCount');
+      const userId = getUserIdFromToken();
 
       // Remove loading spinner
       const loadingDiv = document.getElementById('loadingProjects');
       if (loadingDiv) loadingDiv.remove();
 
+      // Filter projects based on current view
+      let filteredProjects = userProjects.filter(project => {
+        const isOwner = project.ownerId === userId || project.userRole === 'owner';
+        const isDeleted = project.deleted === true;
+
+        if (currentView === 'my-projects') {
+          return isOwner && !isDeleted;
+        } else if (currentView === 'shared') {
+          return !isOwner && !isDeleted;
+        } else if (currentView === 'trash') {
+          return isDeleted;
+        }
+        return false;
+      });
+
       // Update count
-      countDiv.textContent = `${userProjects.length} project${userProjects.length !== 1 ? 's' : ''}`;
+      countDiv.textContent = `${filteredProjects.length} project${filteredProjects.length !== 1 ? 's' : ''}`;
 
       // Clear container
       container.innerHTML = '';
@@ -259,47 +316,80 @@
       ];
 
       // Render each project
-      userProjects.forEach((project, index) => {
+      filteredProjects.forEach((project, index) => {
         const gradient = gradients[index % gradients.length];
         const timeAgo = getTimeAgo(project.updatedAt);
+        const isOwner = project.ownerId === userId || project.userRole === 'owner';
+        const isTrash = currentView === 'trash';
 
         const projectCard = document.createElement('div');
         projectCard.className = 'rounded-xl overflow-hidden doc-preview relative group';
         projectCard.innerHTML = `
           <div onclick="openEditor('${project.projectId}', '${escapeHtml(project.name)}')" class="cursor-pointer">
-            <div class="w-full aspect-video bg-gradient-to-br ${gradient} flex items-center justify-center">
+            <div class="w-full aspect-video bg-gradient-to-br ${gradient} flex items-center justify-center ${isTrash ? 'opacity-50' : ''}">
               <div class="text-white text-xs font-bold">🎵 ${project.bpm} BPM</div>
             </div>
             <div class="p-3">
               <h4 class="text-sm font-semibold truncate">${escapeHtml(project.name)}</h4>
-              <p class="text-xs text-dim mt-1">${timeAgo}</p>
+              <p class="text-xs text-dim mt-1">${timeAgo}${!isOwner ? ' · Shared' : ''}</p>
             </div>
           </div>
-          <button onclick="event.stopPropagation(); openShareModal('${project.projectId}', '${escapeHtml(project.name)}')"
-                  class="absolute top-2 right-2 bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                  title="Share Project">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
-            </svg>
-          </button>
+          <div class="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            ${isOwner && !isTrash ? `
+              <button onclick="event.stopPropagation(); openShareModal('${project.projectId}', '${escapeHtml(project.name)}')"
+                      class="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg shadow-lg"
+                      title="Share Project">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
+                </svg>
+              </button>
+            ` : ''}
+            ${isOwner && !isTrash ? `
+              <button onclick="event.stopPropagation(); deleteProject('${project.projectId}', '${escapeHtml(project.name)}')"
+                      class="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg shadow-lg"
+                      title="Delete Project">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                </svg>
+              </button>
+            ` : ''}
+            ${isTrash && isOwner ? `
+              <button onclick="event.stopPropagation(); restoreProject('${project.projectId}')"
+                      class="bg-green-500 hover:bg-green-600 text-white p-2 rounded-lg shadow-lg"
+                      title="Restore Project">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 12a9 9 0 1018 0 9 9 0 00-18 0M9 12l2 2 4-4"/>
+                </svg>
+              </button>
+              <button onclick="event.stopPropagation(); permanentlyDeleteProject('${project.projectId}', '${escapeHtml(project.name)}')"
+                      class="bg-red-700 hover:bg-red-800 text-white p-2 rounded-lg shadow-lg"
+                      title="Permanently Delete">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            ` : ''}
+          </div>
         `;
         container.appendChild(projectCard);
       });
 
-      // Add "New Beat" button
-      const newProjectCard = document.createElement('div');
-      newProjectCard.className = 'rounded-xl overflow-hidden cursor-pointer border-2 border-dashed border-accent-blue/50 flex items-center justify-center text-center p-4 hover:border-accent-blue transition bg-[#1b1e25]';
-      newProjectCard.onclick = createNewProject;
-      newProjectCard.innerHTML = `
-        <div class="text-accent-blue">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 mx-auto mb-2"
-               viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-          <p class="text-sm font-medium">New Beat</p>
-        </div>
-      `;
-      container.appendChild(newProjectCard);
+      // Add "New Beat" button only in "My Projects" view
+      if (currentView === 'my-projects') {
+        const newProjectCard = document.createElement('div');
+        newProjectCard.className = 'rounded-xl overflow-hidden cursor-pointer border-2 border-dashed border-accent-blue/50 flex items-center justify-center text-center p-4 hover:border-accent-blue transition bg-[#1b1e25]';
+        newProjectCard.onclick = createNewProject;
+        newProjectCard.innerHTML = `
+          <div class="text-accent-blue">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 mx-auto mb-2"
+                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+            <p class="text-sm font-medium">New Beat</p>
+          </div>
+        `;
+        container.appendChild(newProjectCard);
+      }
     }
 
     // Create new project in database
@@ -344,6 +434,91 @@
       localStorage.setItem('currentProjectId', projectId);
       localStorage.setItem('currentProjectName', projectName);
       window.location.href = `workspace.html`;
+    }
+
+    // Delete project (move to trash)
+    async function deleteProject(projectId, projectName) {
+      if (!confirm(`Move "${projectName}" to trash?`)) return;
+
+      try {
+        const token = localStorage.getItem('idToken');
+        const response = await fetch(`${API_BASE}/api/projects/${projectId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to delete project');
+        }
+
+        // Update local state
+        const project = userProjects.find(p => p.projectId === projectId);
+        if (project) {
+          project.deleted = true;
+        }
+
+        renderProjects();
+      } catch (error) {
+        console.error('Error deleting project:', error);
+        alert('Failed to delete project. Please try again.');
+      }
+    }
+
+    // Restore project from trash
+    async function restoreProject(projectId) {
+      try {
+        const token = localStorage.getItem('idToken');
+        const response = await fetch(`${API_BASE}/api/projects/${projectId}/restore`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to restore project');
+        }
+
+        // Update local state
+        const project = userProjects.find(p => p.projectId === projectId);
+        if (project) {
+          project.deleted = false;
+        }
+
+        renderProjects();
+      } catch (error) {
+        console.error('Error restoring project:', error);
+        alert('Failed to restore project. Please try again.');
+      }
+    }
+
+    // Permanently delete project
+    async function permanentlyDeleteProject(projectId, projectName) {
+      if (!confirm(`Permanently delete "${projectName}"? This cannot be undone!`)) return;
+
+      try {
+        const token = localStorage.getItem('idToken');
+        const response = await fetch(`${API_BASE}/api/projects/${projectId}/permanent`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to permanently delete project');
+        }
+
+        // Remove from local state
+        userProjects = userProjects.filter(p => p.projectId !== projectId);
+
+        renderProjects();
+      } catch (error) {
+        console.error('Error permanently deleting project:', error);
+        alert('Failed to permanently delete project. Please try again.');
+      }
     }
 
     // Helper functions

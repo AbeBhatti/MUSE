@@ -31,11 +31,12 @@ const staticOptions = {
     }
   }
 };
+// Serve from dist directory first (built assets take priority)
 if (fs.existsSync(distDir)) {
   app.use(express.static(distDir, staticOptions));
-} else {
-  app.use(express.static(publicDir, staticOptions));
 }
+// Always serve from public directory as fallback (for non-built files like collab-client.js)
+app.use(express.static(publicDir, staticOptions));
 
 // Tighten CSP for MIDI editor pages (no external scripts/styles required)
 app.use((req, res, next) => {
@@ -52,6 +53,9 @@ app.use(require('cors')({
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
+
+// Audio stem separation endpoint
+app.use('/stems', require('./routes/stems'));
 
 // AWS Configuration
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
@@ -525,6 +529,133 @@ app.get('/api/projects/:projectId', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Get project error:', error);
     res.status(500).json({ message: 'Failed to get project' });
+  }
+});
+
+// Soft delete project (move to trash)
+app.delete('/api/projects/:projectId', verifyToken, async (req, res) => {
+  const { projectId } = req.params;
+  const userId = req.user.sub;
+
+  try {
+    // Verify ownership
+    const projectResult = await docClient.send(new GetCommand({
+      TableName: PROJECTS_TABLE,
+      Key: { projectId }
+    }));
+
+    if (!projectResult.Item) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    if (projectResult.Item.ownerId !== userId) {
+      return res.status(403).json({ message: 'Only the project owner can delete projects' });
+    }
+
+    // Soft delete by setting deleted flag
+    await docClient.send(new UpdateCommand({
+      TableName: PROJECTS_TABLE,
+      Key: { projectId },
+      UpdateExpression: 'SET deleted = :true, deletedAt = :now',
+      ExpressionAttributeValues: {
+        ':true': true,
+        ':now': new Date().toISOString()
+      }
+    }));
+
+    res.json({ message: 'Project moved to trash' });
+  } catch (error) {
+    console.error('Delete project error:', error);
+    res.status(500).json({ message: 'Failed to delete project' });
+  }
+});
+
+// Restore project from trash
+app.post('/api/projects/:projectId/restore', verifyToken, async (req, res) => {
+  const { projectId } = req.params;
+  const userId = req.user.sub;
+
+  try {
+    // Verify ownership
+    const projectResult = await docClient.send(new GetCommand({
+      TableName: PROJECTS_TABLE,
+      Key: { projectId }
+    }));
+
+    if (!projectResult.Item) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    if (projectResult.Item.ownerId !== userId) {
+      return res.status(403).json({ message: 'Only the project owner can restore projects' });
+    }
+
+    // Remove deleted flag
+    await docClient.send(new UpdateCommand({
+      TableName: PROJECTS_TABLE,
+      Key: { projectId },
+      UpdateExpression: 'REMOVE deleted, deletedAt'
+    }));
+
+    res.json({ message: 'Project restored' });
+  } catch (error) {
+    console.error('Restore project error:', error);
+    res.status(500).json({ message: 'Failed to restore project' });
+  }
+});
+
+// Permanently delete project
+app.delete('/api/projects/:projectId/permanent', verifyToken, async (req, res) => {
+  const { projectId } = req.params;
+  const userId = req.user.sub;
+
+  try {
+    // Verify ownership
+    const projectResult = await docClient.send(new GetCommand({
+      TableName: PROJECTS_TABLE,
+      Key: { projectId }
+    }));
+
+    if (!projectResult.Item) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    if (projectResult.Item.ownerId !== userId) {
+      return res.status(403).json({ message: 'Only the project owner can permanently delete projects' });
+    }
+
+    // Delete project
+    await docClient.send(new DeleteCommand({
+      TableName: PROJECTS_TABLE,
+      Key: { projectId }
+    }));
+
+    // Delete all collaborators
+    const collaboratorsResult = await docClient.send(new QueryCommand({
+      TableName: COLLABORATORS_TABLE,
+      KeyConditionExpression: 'projectId = :projectId',
+      ExpressionAttributeValues: {
+        ':projectId': projectId
+      }
+    }));
+
+    for (const collab of collaboratorsResult.Items || []) {
+      await docClient.send(new DeleteCommand({
+        TableName: COLLABORATORS_TABLE,
+        Key: { projectId, userId: collab.userId }
+      }));
+    }
+
+    // Delete beat data
+    await docClient.send(new DeleteCommand({
+      TableName: BEATS_TABLE,
+      Key: { projectId }
+    }));
+
+    res.json({ message: 'Project permanently deleted' });
+  } catch (error) {
+    console.error('Permanent delete project error:', error);
+    res.status(500).json({ message: 'Failed to permanently delete project' });
   }
 });
 
