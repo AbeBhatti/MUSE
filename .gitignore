@@ -29,6 +29,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Local helper scripts
+scripts/git-cleanup.sh
+
 # Build outputs
 dist/
 build/
