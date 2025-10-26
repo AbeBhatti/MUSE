@@ -45,13 +45,19 @@ def main():
     output_path = out_dir / output_filename
     midi_data.write(str(output_path))
 
-    # Convert note events to a serializable format
-    notes_list = []
-    for event in note_events:
-        notes_list.append({
-            'pitch': int(event['pitch']),
-            'start': float(event['start_time_s']),
-            'duration': float(event['duration_s'])
+    # Convert note_events to JSON-serializable format
+    # note_events is a numpy array with columns: start_time_s, end_time_s, pitch, amplitude, bend
+    notes = []
+    for note_event in note_events:
+        start_time = float(note_event[0])  # start_time_s
+        end_time = float(note_event[1])    # end_time_s
+        pitch = int(note_event[2])          # pitch
+        duration = end_time - start_time
+
+        notes.append({
+            'pitch': pitch,
+            'start': start_time,
+            'duration': duration
         })
 
     result = {
@@ -60,11 +66,10 @@ def main():
         'filename': output_filename,  # Keep for backward compatibility
         'note_count': int(len(note_events)),
         'duration': float(midi_data.get_end_time()),
-        'notes': notes_list
+        'notes': notes  # Include notes array for frontend
     }
     print(json.dumps(result))
 
 
 if __name__ == '__main__':
     main()
-

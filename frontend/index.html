@@ -164,17 +164,17 @@
       localStorage.setItem('currentProjectId', projectId);
       localStorage.setItem('currentProjectName', projectName);
 
-      // Redirect to dashboard instead of directly to MIDI editor
-      window.location.href = `dashboard.html?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(projectName)}`;
+      // Redirect to React workspace
+      window.location.href = `workspace.html`;
     }
 
     function openEditor(projectId) {
-      // When opening an existing project, go to dashboard first
+      // When opening an existing project, go to workspace
       const projectName = projectId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
       localStorage.setItem('currentProjectId', projectId);
       localStorage.setItem('currentProjectName', projectName);
 
-      window.location.href = `dashboard.html?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(projectName)}`;
+      window.location.href = `workspace.html`;
     }
   </script>
 </body>

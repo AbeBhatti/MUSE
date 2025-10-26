@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+// Use global React from UMD build when embedded via script tags
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 /**
  * Loop Arranger (Pattern Sequencer)
@@ -398,45 +399,86 @@ function AudioTranscriber({ onSave, onExit }) {
   const [error, setError] = useState(null);
 
   /**
-   * Mock function to simulate Basic Pitch transcription
-   * @param {string} fileName 
+   * Real transcription using the backend API
+   * @param {File} file - The audio file to transcribe
    */
-  const mockTranscription = (fileName) => {
-    // Mock the output of the Python script (note_events)
-    const notes = [];
-    // Simulate notes over 8 bars (32 beats)
-    const totalBeats = MAX_TRANSCRIPTION_BARS * BEATS_PER_BAR;
-    const numNotes = getRandomInt(40, 100); 
+  const realTranscription = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
 
-    for (let i = 0; i < numNotes; i++) {
-        // start time in beats
-        const start = getRandomFloat(0, totalBeats - 0.5); 
-        // duration in beats
-        const duration = getRandomFloat(0.1, 1);
-        // MIDI pitch from C3 (48) to C5 (72)
-        const note = getRandomInt(48, 72); 
-        
-        notes.push({ 
-            id: uid(), 
-            note: note, 
-            start: parseFloat(start.toFixed(4)), 
-            duration: parseFloat(duration.toFixed(4)) 
-        });
+    // Add default transcription parameters
+    formData.append('onset_threshold', '0.5');
+    formData.append('frame_threshold', '0.3');
+    formData.append('min_note_len', '0.127');
+    formData.append('melodia_trick', 'true');
+
+    const response = await fetch('http://localhost:1234/upload', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Transcription failed: ${response.status} ${errorText}`);
     }
 
-    // Sort notes by start time
-    notes.sort((a, b) => a.start - b.start);
-    
-    // Calculate the actual duration of the transcribed data
-    let maxEnd = 0;
-    notes.forEach(n => { maxEnd = Math.max(maxEnd, n.start + n.duration); });
-    // Round up the length to the nearest bar (4 beats)
-    const lengthBars = Math.ceil(maxEnd / BEATS_PER_BAR);
+    const data = await response.json();
+
+    if (!data.notes || !Array.isArray(data.notes)) {
+      throw new Error('Invalid transcription response format');
+    }
+
+    // Convert backend format to DAW format
+    const beatsPerBar = BEATS_PER_BAR;
+    const bpm = DEFAULT_BPM;
+    const secondsPerBeat = 60 / bpm;
+    const secondsPerBar = secondsPerBeat * beatsPerBar;
+
+    // Calculate total length in bars from the last note
+    let maxTime = 0;
+    data.notes.forEach(note => {
+      const endTime = note.start + note.duration;
+      if (endTime > maxTime) {
+        maxTime = endTime;
+      }
+    });
+
+    let audioLengthBars = Math.ceil(maxTime / secondsPerBar);
+
+    // Clamp to maxBars
+    if (audioLengthBars > MAX_TRANSCRIPTION_BARS) {
+      audioLengthBars = MAX_TRANSCRIPTION_BARS;
+    }
+
+    // Ensure at least 1 bar
+    if (audioLengthBars < 1) {
+      audioLengthBars = 1;
+    }
+
+    // Convert notes from seconds to beats
+    const maxBeats = MAX_TRANSCRIPTION_BARS * beatsPerBar;
+    const formattedNotes = data.notes.map((note, index) => {
+      // Convert time from seconds to beats
+      const startInBeats = note.start / secondsPerBeat;
+      const durationInBeats = note.duration / secondsPerBeat;
+
+      // Filter out notes beyond maxBars
+      if (startInBeats >= maxBeats) {
+        return null;
+      }
+
+      return {
+        id: uid(),
+        note: note.pitch,
+        start: parseFloat(startInBeats.toFixed(4)),
+        duration: parseFloat(Math.min(durationInBeats, maxBeats - startInBeats).toFixed(4))
+      };
+    }).filter(note => note !== null);
 
     return {
-        notes,
-        audioLengthBars: clamp(lengthBars, 1, MAX_TRANSCRIPTION_BARS),
-        originalFileName: fileName,
+      notes: formattedNotes,
+      audioLengthBars,
+      originalFileName: file.name,
     };
   };
 
@@ -453,7 +495,7 @@ function AudioTranscriber({ onSave, onExit }) {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!file) {
       setError("Please select an audio file first.");
       return;
@@ -462,34 +504,31 @@ function AudioTranscriber({ onSave, onExit }) {
     setIsLoading(true);
     setError(null);
 
-    // Simulate network delay and processing (as actual ML transcription isn't possible)
-    setTimeout(() => {
-        try {
-            const transcriptionData = mockTranscription(file.name);
+    try {
+      const transcriptionData = await realTranscription(file);
 
-            /** @type {Pattern} */
-            const newPattern = {
-                id: uid(),
-                name: `Transcribed: ${file.name.substring(0, 20)}...`,
-                instrument: "transcribed",
-                // @ts-ignore
-                data: {
-                    type: "transcribed",
-                    notes: transcriptionData.notes,
-                    audioLengthBars: transcriptionData.audioLengthBars,
-                    originalFileName: transcriptionData.originalFileName,
-                },
-            };
-            
-            onSave(newPattern);
-            // The modal will close via the onSave handler in the parent
-        } catch (e) {
-            console.error("Transcription simulation failed:", e);
-            setError("An error occurred during simulated transcription.");
-        } finally {
-            setIsLoading(false);
-        }
-    }, 2000); // 2 second mock processing time
+      /** @type {Pattern} */
+      const newPattern = {
+        id: uid(),
+        name: `Transcribed: ${file.name.substring(0, 20)}...`,
+        instrument: "transcribed",
+        // @ts-ignore
+        data: {
+          type: "transcribed",
+          notes: transcriptionData.notes,
+          audioLengthBars: transcriptionData.audioLengthBars,
+          originalFileName: transcriptionData.originalFileName,
+        },
+      };
+
+      onSave(newPattern);
+      // The modal will close via the onSave handler in the parent
+    } catch (e) {
+      console.error("Transcription failed:", e);
+      setError(e.message || "An error occurred during transcription.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -1301,7 +1340,7 @@ function TimelinePanel({
 
 // --- Main App Component ---
 
-export default function LoopArranger() {
+function LoopArranger() {
   const [bpm, setBpm] = useState(DEFAULT_BPM);
   const [numBars, setNumBars] = useState(NUM_BARS_DEFAULT);
   const [isLooping, setIsLooping] = useState(true);
