@@ -14,11 +14,24 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const path = require('path');
 const fs = require('fs');
-const multer = require('multer');
-const { spawn } = require('child_process');
 
-// Serve static files from frontend directory
-app.use(express.static(path.join(__dirname, '../frontend')));
+// Serve static files: prefer built assets if available
+const distDir = path.join(__dirname, '..', 'frontend', 'dist');
+const publicDir = path.join(__dirname, '..', 'frontend');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+} else {
+  app.use(express.static(publicDir));
+}
+
+// Tighten CSP for MIDI editor pages (no external scripts/styles required)
+app.use((req, res, next) => {
+  // Apply strict CSP only for the Vite-based page, which uses bundled local assets
+  if (req.path.includes('midi-editor-vite')) {
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http://localhost:1234; font-src 'self' data:");
+  }
+  next();
+});
 
 app.use(express.json());
 app.use(require('cors')({
@@ -186,89 +199,7 @@ app.post('/api/auth/signin', async (req, res) => {
 });
 
 // ==================== MIDI Transcription Endpoints ====================
-
-// Folders shared with audio-midi assets
-const AUDIO_MIDI_ROOT = path.join(__dirname, '..', 'audio-midi');
-const UPLOAD_DIR = path.join(AUDIO_MIDI_ROOT, 'temp_uploads');
-const OUTPUT_DIR = path.join(AUDIO_MIDI_ROOT, 'temp_output');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-
-const upload = multer({ dest: UPLOAD_DIR });
-
-// POST /upload — accepts audio, runs Python transcription via Basic Pitch
-app.post('/upload', upload.single('file'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file provided' });
-    }
-
-    const {
-      onset_threshold = '0.5',
-      frame_threshold = '0.3',
-      min_note_len = '0.127',
-      min_freq = '',
-      max_freq = '',
-      melodia_trick = 'true',
-    } = req.body || {};
-
-    // Move uploaded file to preserve original filename
-    const originalName = req.file.originalname || 'audio.mp3';
-    const finalPath = path.join(UPLOAD_DIR, originalName);
-    fs.renameSync(req.file.path, finalPath);
-
-    // Build python args
-    const pyPath = path.join(AUDIO_MIDI_ROOT, 'node_transcribe.py');
-    const args = [
-      pyPath,
-      '--input', finalPath,
-      '--output_dir', OUTPUT_DIR,
-      '--onset_threshold', String(onset_threshold),
-      '--frame_threshold', String(frame_threshold),
-      '--min_note_len', String(min_note_len),
-      '--melodia_trick', String(melodia_trick),
-    ];
-    if (min_freq) args.push('--min_freq', String(min_freq));
-    if (max_freq) args.push('--max_freq', String(max_freq));
-
-    // Use PYTHON_CMD from environment if available, otherwise fallback to python3
-    const pythonCmd = process.env.PYTHON_CMD || 'python3';
-    const py = spawn(pythonCmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-
-    let out = '';
-    let err = '';
-    py.stdout.on('data', (d) => (out += d.toString()));
-    py.stderr.on('data', (d) => (err += d.toString()));
-
-    py.on('close', (code) => {
-      // Cleanup uploaded file regardless of outcome
-      try { fs.unlinkSync(finalPath); } catch {}
-
-      if (code !== 0) {
-        console.error('Transcription failed:', err || out);
-        return res.status(500).send(err || 'Transcription failed');
-      }
-      try {
-        const payload = JSON.parse(out.trim().split('\n').pop());
-        return res.json(payload);
-      } catch (e) {
-        console.error('Failed to parse transcription output:', out);
-        return res.status(500).send('Invalid transcription output');
-      }
-    });
-  } catch (e) {
-    console.error('Upload error:', e);
-    return res.status(500).json({ error: e.message });
-  }
-});
-
-// GET /midi/:filename — serve generated MIDI
-app.get('/midi/:filename', (req, res) => {
-  const f = req.params.filename;
-  const p = path.join(OUTPUT_DIR, f);
-  if (!fs.existsSync(p)) return res.status(404).json({ error: 'Not found' });
-  return res.sendFile(p);
-});
+app.use('/', require('./routes/midi'));
 
 // Request Password Reset
 app.post('/api/auth/request-password-reset', async (req, res) => {
@@ -613,4 +544,13 @@ server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 Ready for real-time collaboration!`);
   console.log(`🔐 Authentication enabled with AWS Cognito`);
+});
+
+// Basic error handler (last)
+// eslint-disable-next-line no-unused-vars
+app.use((err, _req, res, _next) => {
+  console.error('Error:', err && err.stack ? err.stack : err);
+  const message = err && err.message ? err.message : 'Server error';
+  const status = message.includes('Unsupported file type') ? 400 : 500;
+  res.status(status).json({ error: message });
 });

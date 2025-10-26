@@ -59,6 +59,7 @@ This starts:
 ### Step 4: Open the DAW
 - **Main Workspace:** http://localhost:1234
 - **MIDI Editor:** http://localhost:1234/midi-editor.html
+  - Optional (faster dev): `cd frontend && npm install && npm run dev`, then open http://localhost:5173/midi-editor-vite.html
 - **Standalone MIDI Editor:** http://localhost:8080
 
 ---

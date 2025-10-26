@@ -73,6 +73,10 @@ echo -e "${GREEN}═════════════════════
 echo ""
 echo -e "${BLUE}Frontend:${NC}        http://localhost:1234"
 echo -e "${BLUE}MIDI Editor:${NC}     http://localhost:1234/midi-editor.html"
+if [ -f frontend/package.json ]; then
+  echo -e "${BLUE}Vite Dev (optional):${NC} http://localhost:5173/midi-editor-vite.html"
+  echo -e "${YELLOW}Run in another terminal:${NC} (cd frontend && npm install && npm run dev)"
+fi
 echo -e "${BLUE}Backend API:${NC}     http://localhost:1234"
 echo ""
 echo -e "${YELLOW}Logs:${NC}"

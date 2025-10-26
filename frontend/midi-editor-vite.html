@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MIDI Editor (Vite)</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a1a; color: #ffffff; overflow: hidden; }
+      .container { display: flex; flex-direction: column; height: 100vh; }
+      .header { background: #2a2a2a; padding: 15px 20px; border-bottom: 1px solid #3a3a3a; display: flex; justify-content: space-between; align-items: center; }
+      .header h1 { font-size: 20px; font-weight: 600; }
+      .controls { display: flex; gap: 10px; align-items: center; }
+      .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+      .btn-primary { background: #007aff; color: white; }
+      .btn-primary:hover { background: #0066d9; }
+      .btn-secondary { background: #3a3a3a; color: white; }
+      .btn-secondary:hover { background: #4a4a4a; }
+      .btn-danger { background: #ff3b30; color: white; }
+      .btn-danger:hover { background: #d92b20; }
+      .file-input { display: none; }
+      .transport { background: #2a2a2a; padding: 15px 20px; border-bottom: 1px solid #3a3a3a; display: flex; gap: 15px; align-items: center; }
+      .play-btn { width: 50px; height: 50px; border-radius: 50%; background: #007aff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+      .play-btn:hover { background: #0066d9; transform: scale(1.05); }
+      .play-btn.playing { background: #ff3b30; }
+      .timeline { flex: 1; height: 40px; background: #1a1a1a; border-radius: 8px; position: relative; overflow: hidden; }
+      .progress-bar { height: 100%; background: #007aff; width: 0%; transition: width 0.1s linear; }
+      .time-display { font-size: 14px; font-weight: 500; color: #999; min-width: 100px; text-align: center; }
+      .editor-container { flex: 1; display: flex; overflow: hidden; }
+      .piano-keys { width: 60px; background: #2a2a2a; border-right: 1px solid #3a3a3a; overflow-y: auto; overflow-x: hidden; }
+      .piano-key { height: 20px; border-bottom: 1px solid #3a3a3a; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #666; }
+      .piano-key.white { background: #f0f0f0; color: #333; }
+      .piano-key.black { background: #1a1a1a; color: #999; }
+      .piano-roll { flex: 1; overflow: auto; position: relative; background: #0a0a0a; }
+      .piano-roll-canvas { position: relative; }
+      .note { position: absolute; background: #007aff; border-radius: 3px; cursor: move; border: 1px solid #0066d9; opacity: 0.9; transition: opacity 0.1s; }
+      .note:hover { opacity: 1; border-color: #00ff00; }
+      .note.selected { border: 2px solid #00ff00; opacity: 1; }
+      .playhead { position: absolute; width: 2px; height: 100%; background: #ff3b30; left: 0; top: 0; pointer-events: none; z-index: 1000; }
+      .info-panel { background: #2a2a2a; padding: 15px 20px; border-top: 1px solid #3a3a3a; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #999; }
+      .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #666; }
+      .empty-state-icon { font-size: 64px; margin-bottom: 20px; }
+      .empty-state h2 { font-size: 24px; margin-bottom: 10px; color: #999; }
+      .empty-state p { font-size: 14px; margin-bottom: 20px; }
+      .grid-line { position: absolute; background: #1a1a1a; pointer-events: none; }
+      .grid-line.horizontal { width: 100%; height: 1px; }
+      .grid-line.vertical { width: 1px; height: 100%; }
+      ::-webkit-scrollbar { width: 12px; height: 12px; }
+      ::-webkit-scrollbar-track { background: #1a1a1a; }
+      ::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 6px; }
+      ::-webkit-scrollbar-thumb:hover { background: #4a4a4a; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🎹 MIDI Editor</h1>
+        <div class="controls">
+          <input type="file" id="audioInput" class="file-input" accept=".mp3,.wav,.flac,.ogg,.m4a" />
+          <input type="file" id="midiInput" class="file-input" accept=".mid,.midi" />
+          <button class="btn btn-primary" onclick="document.getElementById('audioInput').click()">Upload Audio</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('midiInput').click()">Open MIDI</button>
+          <button class="btn btn-secondary" id="saveBtn" disabled>Save MIDI</button>
+          <button class="btn btn-danger" id="deleteBtn" disabled>Delete Selected</button>
+        </div>
+      </div>
+      <div class="transport">
+        <button class="play-btn" id="playBtn" disabled>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <div class="timeline" id="timeline"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="time-display" id="timeDisplay">0:00 / 0:00</div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span style="font-size: 12px; color: #999;">Zoom:</span>
+          <button class="btn btn-secondary" id="zoomOut" style="padding: 4px 8px; font-size: 12px;">-</button>
+          <span id="zoomLevel" style="font-size: 12px; color: #999; min-width: 40px; text-align: center;">100%</span>
+          <button class="btn btn-secondary" id="zoomIn" style="padding: 4px 8px; font-size: 12px;">+</button>
+        </div>
+      </div>
+      <div class="editor-container">
+        <div class="piano-keys" id="pianoKeys"></div>
+        <div class="piano-roll" id="pianoRoll">
+          <div class="empty-state">
+            <div class="empty-state-icon">🎵</div>
+            <h2>No MIDI File Loaded</h2>
+            <p>Upload an audio file (MP3, WAV, etc.) to transcribe it to MIDI</p>
+            <button class="btn btn-primary" onclick="document.getElementById('audioInput').click()" style="margin-right: 10px;">Upload Audio File</button>
+            <button class="btn btn-secondary" onclick="document.getElementById('midiInput').click()">Or Open MIDI File</button>
+          </div>
+        </div>
+      </div>
+      <div class="info-panel">
+        <div id="fileInfo">No file loaded</div>
+        <div id="selectionInfo">Click and drag notes to edit</div>
+      </div>
+    </div>
+    <div class="modal" id="transcriptionModal" style="display:none;"></div>
+    <div class="modal" id="loadingModal" style="display:none;"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+  </html>
+
