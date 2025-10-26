@@ -64,20 +64,23 @@ class AudioEngine {
   numBarsRef;
   isLoopingRef;
   onStopRef;
+  instrumentParamsRef;
 
   /**
-   * @param {React.MutableRefObject<Pattern[]>} patternsRef 
-   * @param {React.MutableRefObject<TimelineClip[]>} clipsRef 
-   * @param {React.MutableRefObject<number>} numBarsRef 
-   * @param {React.MutableRefObject<boolean>} isLoopingRef 
-   * @param {React.MutableRefObject<() => void>} onStopRef 
+   * @param {React.MutableRefObject<Pattern[]>} patternsRef
+   * @param {React.MutableRefObject<TimelineClip[]>} clipsRef
+   * @param {React.MutableRefObject<number>} numBarsRef
+   * @param {React.MutableRefObject<boolean>} isLoopingRef
+   * @param {React.MutableRefObject<() => void>} onStopRef
+   * @param {React.MutableRefObject<Object>} instrumentParamsRef
    */
-  constructor(patternsRef, clipsRef, numBarsRef, isLoopingRef, onStopRef) {
+  constructor(patternsRef, clipsRef, numBarsRef, isLoopingRef, onStopRef, instrumentParamsRef) {
     this.patternsRef = patternsRef;
-    this.clipsRef = clipsRef; 
+    this.clipsRef = clipsRef;
     this.numBarsRef = numBarsRef;
     this.isLoopingRef = isLoopingRef;
     this.onStopRef = onStopRef;
+    this.instrumentParamsRef = instrumentParamsRef;
   }
 
   init() {
@@ -96,45 +99,63 @@ class AudioEngine {
   // --- Sound Synthesis ---
   playKick(time) {
     if (!this.ctx) return;
+    const params = this.instrumentParamsRef?.current?.drums || { volume: 0.8, pan: 0 };
+
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
+    const panner = this.ctx.createStereoPanner();
+
     osc.frequency.setValueAtTime(150, time);
-    osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.1);
-    gain.gain.setValueAtTime(1, time);
+    osc.frequency.exponentialRampToValueAtTime(50, time + 0.1); // Ramp to 50Hz instead of 0.01Hz
+    gain.gain.setValueAtTime(params.volume || 0.8, time);
     gain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
-    osc.connect(gain).connect(this.ctx.destination);
+    panner.pan.value = params.pan || 0;
+
+    osc.connect(gain).connect(panner).connect(this.ctx.destination);
     osc.start(time);
     osc.stop(time + 0.1);
   }
 
   playSnare(time) {
     if (!this.ctx) return;
+    const params = this.instrumentParamsRef?.current?.drums || { volume: 0.8, pan: 0 };
+
     const noise = this.ctx.createBufferSource();
     const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.1, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     noise.buffer = buffer;
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(1, time);
+    const panner = this.ctx.createStereoPanner();
+
+    gain.gain.setValueAtTime(params.volume, time);
     gain.gain.exponentialRampToValueAtTime(0.01, time + 0.08);
-    noise.connect(gain).connect(this.ctx.destination);
+    panner.pan.value = params.pan;
+
+    noise.connect(gain).connect(panner).connect(this.ctx.destination);
     noise.start(time);
   }
 
   playHat(time) {
     if (!this.ctx) return;
+    const params = this.instrumentParamsRef?.current?.drums || { volume: 0.8, pan: 0 };
+
     const noise = this.ctx.createBufferSource();
     const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.05, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     noise.buffer = buffer;
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.3, time);
-    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.04);
+    const panner = this.ctx.createStereoPanner();
     const hpf = this.ctx.createBiquadFilter();
+
+    gain.gain.setValueAtTime(0.3 * params.volume, time);
+    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.04);
+    panner.pan.value = params.pan;
     hpf.type = "highpass";
     hpf.frequency.value = 5000;
-    noise.connect(hpf).connect(gain).connect(this.ctx.destination);
+
+    noise.connect(hpf).connect(gain).connect(panner).connect(this.ctx.destination);
     noise.start(time);
   }
 
@@ -143,39 +164,88 @@ class AudioEngine {
   }
 
   /**
-   * @param {number} time 
-   * @param {number} freq 
-   * @param {number} duration 
-   * @param {"bass" | "synth" | "piano" | "transcribed"} instrument 
+   * @param {number} time
+   * @param {number} freq
+   * @param {number} duration
+   * @param {"bass" | "synth" | "piano" | "transcribed"} instrument
    */
   playNote(time, freq, duration, instrument) {
     if (!this.ctx) return;
+    const params = this.instrumentParamsRef?.current?.[instrument] || {
+      volume: 0.8, pan: 0, pitch: 0,
+      filterType: 'none', filterCutoff: 1000, filterResonance: 1,
+      attack: 0.01, decay: 0.1, sustain: 0.7, release: 0.3
+    };
+
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    
+    const panner = this.ctx.createStereoPanner();
+
+    let baseVolume = 0.5;
+
     if (instrument === "bass") {
       osc.type = "sawtooth";
-      gain.gain.setValueAtTime(0.5, time);
-      gain.gain.exponentialRampToValueAtTime(0.01, time + duration * 1.5);
+      baseVolume = 0.5;
     } else if (instrument === "synth") {
       osc.type = "square";
-      gain.gain.setValueAtTime(0.3, time);
-      gain.gain.exponentialRampToValueAtTime(0.01, time + duration);
-    } else if (instrument === "piano") { // piano
+      baseVolume = 0.3;
+    } else if (instrument === "piano") {
       osc.type = "triangle";
-      gain.gain.setValueAtTime(0.4, time);
-      gain.gain.exponentialRampToValueAtTime(0.01, time + duration * 0.8);
+      baseVolume = 0.4;
     } else if (instrument === "transcribed") {
-      osc.type = "sine"; // Use a simple sine for transcribed melodies
-      gain.gain.setValueAtTime(0.5, time);
-      gain.gain.exponentialRampToValueAtTime(0.01, time + duration * 0.9);
+      osc.type = "sine";
+      baseVolume = 0.5;
     }
 
+    // Apply ADSR envelope
+    const attack = params.attack || 0.01;
+    const decay = params.decay || 0.1;
+    const sustain = params.sustain || 0.7;
+    const release = params.release || 0.3;
 
-    osc.frequency.setValueAtTime(freq, time);
-    osc.connect(gain).connect(this.ctx.destination);
+    const peakVolume = baseVolume * (params.volume || 0.8);
+    const sustainVolume = Math.max(0.001, peakVolume * sustain); // Ensure sustain isn't too low for exponential ramp
+
+    // Attack phase
+    gain.gain.setValueAtTime(0.001, time);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.001, peakVolume), time + attack);
+
+    // Decay phase to sustain level
+    if (sustainVolume < peakVolume) {
+      gain.gain.exponentialRampToValueAtTime(sustainVolume, time + attack + decay);
+    }
+
+    // Sustain phase (held at sustainVolume until note off)
+    const noteOffTime = time + duration;
+
+    // Release phase
+    gain.gain.exponentialRampToValueAtTime(0.001, noteOffTime + release);
+
+    // Apply pitch shift (semitones to frequency multiplier)
+    const pitchMultiplier = Math.pow(2, (params.pitch || 0) / 12);
+    const adjustedFreq = freq * pitchMultiplier;
+
+    // Apply pan
+    panner.pan.value = params.pan || 0;
+
+    osc.frequency.setValueAtTime(adjustedFreq, time);
+
+    // Apply filter if enabled
+    let audioChain = osc;
+    if (params.filterType && params.filterType !== 'none') {
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = params.filterType;
+      filter.frequency.value = params.filterCutoff || 1000;
+      filter.Q.value = params.filterResonance || 1;
+      audioChain.connect(filter);
+      audioChain = filter;
+    }
+
+    // Connect audio chain: osc -> [filter] -> gain -> panner -> destination
+    audioChain.connect(gain).connect(panner).connect(this.ctx.destination);
+
     osc.start(time);
-    osc.stop(time + duration);
+    osc.stop(noteOffTime + release);
   }
   
   // --- Public playback methods ---
@@ -287,6 +357,51 @@ class AudioEngine {
       /** @type {PatternData} */
       const patternData = pattern.data;
 
+      // Handle Drum patterns
+      if (patternData.type === "drums") {
+        const patternGrid = patternData.grid;
+        const patternLength = patternGrid[0]?.length || STEPS_PER_BAR;
+        
+        // Calculate relative step within the pattern
+        const clipStartSteps = clip.startBar * STEPS_PER_BAR;
+        const relativeStep = step - clipStartSteps;
+        const stepInPattern = ((relativeStep % patternLength) + patternLength) % patternLength;
+        
+        for (let row = 0; row < patternGrid.length; row++) {
+          if (patternGrid[row] && patternGrid[row][stepInPattern]) {
+            const drumSounds = ["clap", "hat", "snare", "kick"];
+            if (row < drumSounds.length) {
+              if (drumSounds[row] === "kick") this.playKick(time);
+              if (drumSounds[row] === "snare") this.playSnare(time);
+              if (drumSounds[row] === "hat") this.playHat(time);
+              if (drumSounds[row] === "clap") this.playClap(time);
+            }
+          }
+        }
+      }
+      
+      // Handle Melody patterns (Bass and Synth)
+      if (patternData.type === "melody") {
+        const patternGrid = patternData.grid;
+        const patternLength = patternGrid[0]?.length || STEPS_PER_BAR;
+        const noteMap = MELODY_NOTE_MAP;
+        
+        // Calculate relative step within the pattern
+        const clipStartSteps = clip.startBar * STEPS_PER_BAR;
+        const relativeStep = step - clipStartSteps;
+        const stepInPattern = ((relativeStep % patternLength) + patternLength) % patternLength;
+        
+        for (let row = 0; row < patternGrid.length; row++) {
+          if (patternGrid[row] && patternGrid[row][stepInPattern]) {
+            if (row < noteMap.length) {
+              const midiNote = noteMap[row];
+              const freq = 440 * Math.pow(2, (midiNote - 69) / 12);
+              this.playNote(time, freq, this.beatsToSec(1 / STEPS_PER_BEAT), patternData.instrument);
+            }
+          }
+        }
+      }
+      
       // Handle MIDI/Note-based patterns (Piano and Transcribed)
       if (patternData.type === "piano" || patternData.type === "transcribed") {
         
@@ -316,8 +431,6 @@ class AudioEngine {
           }
         }
       }
-      // Note: Drum and Melody sequencing logic is simplified for this fix, 
-      // focusing on the core error and the new feature.
     }
   }
 }
@@ -594,6 +707,7 @@ function DrumSequencer({ onSave, onExit, engine, patterns }) {
   const [name, setName] = useState(
     `Drum Pattern ${patterns.filter(p => p.instrument === "drums").length + 1}`
   );
+  const [patternSteps, setPatternSteps] = useState(STEPS_PER_BAR); // 16 by default
   const soundMap = ["clap", "hat", "snare", "kick"];
 
   const toggle = (row, step) => {
@@ -609,6 +723,24 @@ function DrumSequencer({ onSave, onExit, engine, patterns }) {
     }
   };
 
+  const clearPattern = () => {
+    setGrid(createEmptyGrid(4));
+  };
+
+  const adjustPatternLength = (newSteps) => {
+    const clamped = Math.max(8, Math.min(64, newSteps)); // 8-64 steps
+    setPatternSteps(clamped);
+    setGrid(g => {
+      return g.map(row => {
+        const newRow = Array(clamped).fill(false);
+        for (let i = 0; i < Math.min(row.length, clamped); i++) {
+          newRow[i] = row[i];
+        }
+        return newRow;
+      });
+    });
+  };
+
   const save = () => {
     onSave({
       id: uid(),
@@ -622,29 +754,50 @@ function DrumSequencer({ onSave, onExit, engine, patterns }) {
   return (
     <div className="p-4 bg-zinc-800 rounded-lg shadow-xl w-full max-w-2xl">
       <div className="flex justify-between items-center mb-4">
-        <input 
+        <input
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
             className="text-xl font-bold bg-transparent border-b border-zinc-600 focus:outline-none"
         />
-        <div>
-          <button onClick={save} className="px-3 py-1 bg-lime-500 text-black rounded-lg mr-2">Save</button>
+        <div className="flex gap-2">
+          <button onClick={save} className="px-3 py-1 bg-lime-500 text-black rounded-lg">Save</button>
           <button onClick={onExit} className="px-3 py-1 bg-zinc-600 rounded-lg">Close</button>
         </div>
       </div>
+
+      {/* Pattern Tools */}
+      <div className="flex items-center gap-3 mb-3 pb-3 border-b border-zinc-700">
+        <button onClick={clearPattern} className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm">
+          Clear
+        </button>
+        <div className="flex items-center gap-2">
+          <label className="text-sm opacity-70">Steps:</label>
+          <select
+            value={patternSteps}
+            onChange={(e) => adjustPatternLength(parseInt(e.target.value))}
+            className="bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-sm"
+          >
+            <option value={8}>8 (1/2 bar)</option>
+            <option value={16}>16 (1 bar)</option>
+            <option value={32}>32 (2 bars)</option>
+            <option value={64}>64 (4 bars)</option>
+          </select>
+        </div>
+      </div>
+
       <div className="w-full overflow-x-auto">
-        <div className="flex flex-col gap-px" style={{ width: STEPS_PER_BAR * 24 }}>
+        <div className="flex flex-col gap-px" style={{ width: patternSteps * 32 }}>
           {[...Array(4)].map((_, r) => (
             <div key={r} className="flex items-center gap-px">
-              <div className="w-20 h-8 flex items-center justify-end text-xs pr-2 opacity-70 sticky left-0 bg-zinc-800">
+              <div className="w-24 h-10 flex items-center justify-end text-sm pr-2 opacity-70 sticky left-0 bg-zinc-800">
                 {DRUM_NAMES[r]}
               </div>
-              {[...Array(STEPS_PER_BAR)].map((_, s) => (
+              {[...Array(patternSteps)].map((_, s) => (
                 <div
                   key={`${r}-${s}`}
                   onClick={() => toggle(r, s)}
-                  className={`w-6 h-8 rounded-sm cursor-pointer ${
+                  className={`w-8 h-10 rounded-sm cursor-pointer ${
                     grid[r][s] ? "bg-emerald-500" : "bg-zinc-700"
                   } ${s % 4 === 0 ? "opacity-100" : "opacity-60"} hover:bg-zinc-600`}
                 />
@@ -665,26 +818,45 @@ function MelodySequencer({ instrument, onSave, onExit, engine, patterns }) {
   const [name, setName] = useState(
     `${instrument === 'bass' ? 'Bass' : 'Synth'} Pattern ${patterns.filter(p => p.instrument === instrument).length + 1}`
   );
+  const [patternSteps, setPatternSteps] = useState(STEPS_PER_BAR); // 16 by default
   const noteMap = MELODY_NOTE_MAP;
 
   const toggle = (gridRow, step) => {
     setGrid(g => {
       const newGrid = g.map(r => [...r]);
       const isOn = !newGrid[gridRow][step];
-      
+
       // Allow only one note per step (monophonic)
       for(let i=0; i < noteMap.length; i++) {
         newGrid[i][step] = false;
       }
       newGrid[gridRow][step] = isOn;
-      
+
       return newGrid;
     });
     if (engine) {
         engine.playImmediateNote(instrument, noteMap[gridRow]);
     }
   };
-  
+
+  const clearPattern = () => {
+    setGrid(createEmptyGrid(6));
+  };
+
+  const adjustPatternLength = (newSteps) => {
+    const clamped = Math.max(8, Math.min(64, newSteps)); // 8-64 steps
+    setPatternSteps(clamped);
+    setGrid(g => {
+      return g.map(row => {
+        const newRow = Array(clamped).fill(false);
+        for (let i = 0; i < Math.min(row.length, clamped); i++) {
+          newRow[i] = row[i];
+        }
+        return newRow;
+      });
+    });
+  };
+
   const save = () => {
     onSave({
       id: uid(),
@@ -698,40 +870,61 @@ function MelodySequencer({ instrument, onSave, onExit, engine, patterns }) {
   return (
     <div className="p-4 bg-zinc-800 rounded-lg shadow-xl w-full max-w-2xl">
       <div className="flex justify-between items-center mb-4">
-        <input 
+        <input
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
             className="text-xl font-bold bg-transparent border-b border-zinc-600 focus:outline-none"
         />
-        <div>
-          <button onClick={save} className="px-3 py-1 bg-lime-500 text-black rounded-lg mr-2">Save</button>
+        <div className="flex gap-2">
+          <button onClick={save} className="px-3 py-1 bg-lime-500 text-black rounded-lg">Save</button>
           <button onClick={onExit} className="px-3 py-1 bg-zinc-600 rounded-lg">Close</button>
         </div>
       </div>
+
+      {/* Pattern Tools */}
+      <div className="flex items-center gap-3 mb-3 pb-3 border-b border-zinc-700">
+        <button onClick={clearPattern} className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm">
+          Clear
+        </button>
+        <div className="flex items-center gap-2">
+          <label className="text-sm opacity-70">Steps:</label>
+          <select
+            value={patternSteps}
+            onChange={(e) => adjustPatternLength(parseInt(e.target.value))}
+            className="bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-sm"
+          >
+            <option value={8}>8 (1/2 bar)</option>
+            <option value={16}>16 (1 bar)</option>
+            <option value={32}>32 (2 bars)</option>
+            <option value={64}>64 (4 bars)</option>
+          </select>
+        </div>
+      </div>
+
       <div className="w-full overflow-x-auto">
-        <div className="flex flex-col gap-px" style={{ width: STEPS_PER_BAR * 24 }}>
+        <div className="flex flex-col gap-px" style={{ width: patternSteps * 32 }}>
           {MELODY_ROLL_NOTES.map((note, noteIdx) => {
             const isClickable = note.type === 'white';
             const gridRow = note.gridRow;
-            
+
             return (
               <div key={note.name} className="flex items-center gap-px" style={{ opacity: isClickable ? 1 : 0.5 }}>
-                <div 
-                    className={`w-12 h-6 flex items-center justify-end text-xs pr-2 sticky left-0 ${
+                <div
+                    className={`w-16 h-8 flex items-center justify-end text-sm pr-2 sticky left-0 ${
                         note.type === 'white' ? 'bg-zinc-600 text-white' : 'bg-zinc-700 text-zinc-400'
                     }`}
                 >
                   {note.name}
                 </div>
-                {[...Array(STEPS_PER_BAR)].map((_, s) => {
+                {[...Array(patternSteps)].map((_, s) => {
                   const isActive = isClickable && gridRow !== null && grid[gridRow][s];
                   return (
                     <div
                       key={`${noteIdx}-${s}`}
                       onClick={() => isClickable && gridRow !== null && toggle(gridRow, s)}
-                      className={`w-6 h-6 rounded-sm ${
-                        isActive ? (instrument === 'bass' ? 'bg-fuchsia-500' : 'bg-cyan-500') 
+                      className={`w-8 h-8 rounded-sm ${
+                        isActive ? (instrument === 'bass' ? 'bg-fuchsia-500' : 'bg-cyan-500')
                         : (note.type === 'white' ? 'bg-zinc-700' : 'bg-zinc-800')
                       } ${s % 4 === 0 ? "opacity-100" : "opacity-80"} ${
                         isClickable ? 'cursor-pointer hover:bg-zinc-600' : ''
@@ -758,15 +951,16 @@ function PianoSequencer({ onSave, onExit, engine, patterns }) {
   const [isRecording, setIsRecording] = useState(false);
   /** @type {[MidiNote[], React.Dispatch<React.SetStateAction<MidiNote[]>>]} */
   const [recordedNotes, setRecordedNotes] = useState([]);
+  const [recordingBars, setRecordingBars] = useState(PIANO_RECORDING_BARS); // Default to 4 bars
   const recordingStartTime = useRef(0);
   /** @type {React.MutableRefObject<Map<number, number>>} */
   const notesDown = useRef(new Map());
   const [recordingProgress, setRecordingProgress] = useState(0);
   const animFrameRef = useRef(0);
-  
-  const PIXELS_PER_BEAT = 64;
-  const ROW_HEIGHT = 20;
-  const TOTAL_RECORDING_BEATS = BEATS_PER_BAR * PIANO_RECORDING_BARS;
+
+  const PIXELS_PER_BEAT = 84;
+  const ROW_HEIGHT = 26;
+  const TOTAL_RECORDING_BEATS = BEATS_PER_BAR * recordingBars;
   const TOTAL_RECORDING_MS = (60 / DEFAULT_BPM) * TOTAL_RECORDING_BEATS * 1000;
 
   const getBeat = () => (Date.now() - recordingStartTime.current) / 1000 / (60 / DEFAULT_BPM);
@@ -878,6 +1072,14 @@ function PianoSequencer({ onSave, onExit, engine, patterns }) {
     setRecordedNotes(notes => notes.filter(n => n.id !== noteId));
   };
 
+  const clearPattern = () => {
+    setRecordedNotes([]);
+    if (isRecording) {
+      setIsRecording(false);
+      notesDown.current.clear();
+    }
+  };
+
   const save = () => {
     onSave({
       id: uid(),
@@ -891,15 +1093,36 @@ function PianoSequencer({ onSave, onExit, engine, patterns }) {
   return (
     <div className="p-4 bg-zinc-800 rounded-lg shadow-xl w-full max-w-4xl flex flex-col">
       <div className="flex justify-between items-center mb-4">
-        <input 
+        <input
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
             className="text-xl font-bold bg-transparent border-b border-zinc-600 focus:outline-none"
         />
-        <div>
-          <button onClick={save} className="px-3 py-1 bg-lime-500 text-black rounded-lg mr-2">Save</button>
+        <div className="flex gap-2">
+          <button onClick={save} className="px-3 py-1 bg-lime-500 text-black rounded-lg">Save</button>
           <button onClick={onExit} className="px-3 py-1 bg-zinc-600 rounded-lg">Close</button>
+        </div>
+      </div>
+
+      {/* Pattern Tools */}
+      <div className="flex items-center gap-3 mb-3 pb-3 border-b border-zinc-700">
+        <button onClick={clearPattern} className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm">
+          Clear
+        </button>
+        <div className="flex items-center gap-2">
+          <label className="text-sm opacity-70">Pattern Length:</label>
+          <select
+            value={recordingBars}
+            onChange={(e) => setRecordingBars(parseInt(e.target.value))}
+            disabled={isRecording}
+            className="bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-sm disabled:opacity-50"
+          >
+            <option value={1}>1 bar</option>
+            <option value={2}>2 bars</option>
+            <option value={4}>4 bars</option>
+            <option value={8}>8 bars</option>
+          </select>
         </div>
       </div>
 
@@ -1030,9 +1253,11 @@ function PianoSequencer({ onSave, onExit, engine, patterns }) {
 // --- Main App Components ---
 
 /**
- * @param {{ onSelectInstrument: (inst: InstrumentId) => void, patterns: Pattern[], onSelectTranscribe: () => void }} props 
+ * @param {{ onSelectInstrument: (inst: InstrumentId) => void, patterns: Pattern[], onSelectTranscribe: () => void, instrumentParams: any, setInstrumentParams: any }} props
  */
-function LibraryPanel({ onSelectInstrument, patterns, onSelectTranscribe }) {
+function LibraryPanel({ onSelectInstrument, patterns, onSelectTranscribe, instrumentParams, setInstrumentParams }) {
+  const [expandedInstrument, setExpandedInstrument] = useState(null);
+
   const instruments = [
     { id: "drums", name: "Drums", color: "bg-emerald-500" },
     { id: "bass", name: "Bass", color: "bg-fuchsia-500" },
@@ -1040,51 +1265,228 @@ function LibraryPanel({ onSelectInstrument, patterns, onSelectTranscribe }) {
     { id: "piano", name: "Piano", color: "bg-amber-500" },
     { id: "transcribed", name: "Transcribed Audio", color: "bg-purple-500" },
   ];
-  
+
   /**
-   * @param {React.DragEvent} e 
-   * @param {Pattern} pattern 
+   * @param {React.DragEvent} e
+   * @param {Pattern} pattern
    */
   const onDragStart = (e, pattern) => {
     e.dataTransfer.setData("application/json", JSON.stringify(pattern));
+  };
+
+  const updateParam = (instId, param, value) => {
+    setInstrumentParams(prev => ({
+      ...prev,
+      [instId]: { ...prev[instId], [param]: value }
+    }));
   };
 
   return (
     <div className="col-span-12 md:col-span-3 bg-zinc-900 p-4 rounded-lg">
       <h2 className="text-xl font-semibold mb-4">Library</h2>
       
-      {instruments.filter(i => i.id !== 'transcribed').map(inst => (
-        <div key={inst.id} className="mb-4">
-          <button 
-            // @ts-ignore
-            onClick={() => onSelectInstrument(inst.id)}
-            className={`w-full px-4 py-3 rounded-lg font-medium text-left ${inst.color} text-black shadow-lg hover:opacity-90 transition-all`}
-          >
-            + Create {inst.name}
-          </button>
-          
-          <div className="mt-2 space-y-1">
-            {patterns.filter(p => p.instrument === inst.id).map(p => (
-              <div
-                key={p.id}
-                draggable
-                onDragStart={(e) => onDragStart(e, p)}
-                className={`w-full px-3 py-2 rounded bg-zinc-800 border border-zinc-700 cursor-grab active:cursor-grabbing text-sm hover:bg-zinc-700`}
-              >
-                {p.name}
+      {instruments.filter(i => i.id !== 'transcribed').map(inst => {
+        const isExpanded = expandedInstrument === inst.id;
+        const params = instrumentParams[inst.id] || {};
+
+        return (
+          <div key={inst.id} className="mb-4">
+            <button
+              // @ts-ignore
+              onClick={() => onSelectInstrument(inst.id)}
+              className={`w-full px-4 py-3 rounded-lg font-medium text-left ${inst.color} text-black shadow-lg hover:opacity-90 transition-all`}
+            >
+              + Create {inst.name}
+            </button>
+
+            {/* Instrument Controls Toggle */}
+            <button
+              onClick={() => setExpandedInstrument(isExpanded ? null : inst.id)}
+              className="w-full px-3 py-2 mt-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-xs text-left flex items-center justify-between transition"
+            >
+              <span>⚙️ Controls</span>
+              <span>{isExpanded ? '▼' : '▶'}</span>
+            </button>
+
+            {/* Expandable Controls Panel */}
+            {isExpanded && (
+              <div className="mt-2 p-3 bg-zinc-800/50 rounded-lg space-y-3 border border-zinc-700">
+                {/* Volume */}
+                <div>
+                  <label className="text-xs opacity-70">Volume: {Math.round((params.volume || 0.8) * 100)}%</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={params.volume || 0.8}
+                    onChange={(e) => updateParam(inst.id, 'volume', parseFloat(e.target.value))}
+                    className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-lime-500"
+                  />
+                </div>
+
+                {/* Pan */}
+                <div>
+                  <label className="text-xs opacity-70">Pan: {params.pan === 0 ? 'C' : params.pan > 0 ? `R${Math.round((params.pan || 0) * 100)}` : `L${Math.round(Math.abs(params.pan || 0) * 100)}`}</label>
+                  <input
+                    type="range"
+                    min="-1"
+                    max="1"
+                    step="0.01"
+                    value={params.pan || 0}
+                    onChange={(e) => updateParam(inst.id, 'pan', parseFloat(e.target.value))}
+                    className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-lime-500"
+                  />
+                </div>
+
+                {/* Pitch */}
+                <div>
+                  <label className="text-xs opacity-70">Pitch: {(params.pitch || 0) > 0 ? '+' : ''}{params.pitch || 0} semitones</label>
+                  <input
+                    type="range"
+                    min="-12"
+                    max="12"
+                    step="1"
+                    value={params.pitch || 0}
+                    onChange={(e) => updateParam(inst.id, 'pitch', parseInt(e.target.value))}
+                    className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-lime-500"
+                  />
+                </div>
+
+                {/* Filter Controls (for melodic instruments) */}
+                {inst.id !== 'drums' && (
+                  <>
+                    <div className="pt-2 border-t border-zinc-700">
+                      <label className="text-xs opacity-70">Filter Type</label>
+                      <select
+                        value={params.filterType || 'none'}
+                        onChange={(e) => updateParam(inst.id, 'filterType', e.target.value)}
+                        className="w-full bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-xs mt-1"
+                      >
+                        <option value="none">None</option>
+                        <option value="lowpass">Low Pass</option>
+                        <option value="highpass">High Pass</option>
+                      </select>
+                    </div>
+
+                    {params.filterType !== 'none' && (
+                      <>
+                        <div>
+                          <label className="text-xs opacity-70">Filter Cutoff: {Math.round(params.filterCutoff || 1000)} Hz</label>
+                          <input
+                            type="range"
+                            min="100"
+                            max="5000"
+                            step="50"
+                            value={params.filterCutoff || 1000}
+                            onChange={(e) => updateParam(inst.id, 'filterCutoff', parseInt(e.target.value))}
+                            className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs opacity-70">Resonance: {(params.filterResonance || 1).toFixed(1)}</label>
+                          <input
+                            type="range"
+                            min="0.1"
+                            max="10"
+                            step="0.1"
+                            value={params.filterResonance || 1}
+                            onChange={(e) => updateParam(inst.id, 'filterResonance', parseFloat(e.target.value))}
+                            className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+
+                {/* ADSR Envelope (for melodic instruments) */}
+                {inst.id !== 'drums' && (
+                  <>
+                    <div className="pt-2 border-t border-zinc-700">
+                      <label className="text-xs opacity-70 font-semibold">ADSR Envelope</label>
+                    </div>
+
+                    <div>
+                      <label className="text-xs opacity-70">Attack: {((params.attack || 0.01) * 1000).toFixed(0)}ms</label>
+                      <input
+                        type="range"
+                        min="0.001"
+                        max="1"
+                        step="0.01"
+                        value={params.attack || 0.01}
+                        onChange={(e) => updateParam(inst.id, 'attack', parseFloat(e.target.value))}
+                        className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs opacity-70">Decay: {((params.decay || 0.1) * 1000).toFixed(0)}ms</label>
+                      <input
+                        type="range"
+                        min="0.01"
+                        max="2"
+                        step="0.01"
+                        value={params.decay || 0.1}
+                        onChange={(e) => updateParam(inst.id, 'decay', parseFloat(e.target.value))}
+                        className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs opacity-70">Sustain: {Math.round((params.sustain || 0.7) * 100)}%</label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={params.sustain || 0.7}
+                        onChange={(e) => updateParam(inst.id, 'sustain', parseFloat(e.target.value))}
+                        className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs opacity-70">Release: {((params.release || 0.3) * 1000).toFixed(0)}ms</label>
+                      <input
+                        type="range"
+                        min="0.01"
+                        max="3"
+                        step="0.01"
+                        value={params.release || 0.3}
+                        onChange={(e) => updateParam(inst.id, 'release', parseFloat(e.target.value))}
+                        className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
-            ))}
-          </div>
-          {inst.id === 'piano' && (
-             <button 
+            )}
+
+            <div className="mt-2 space-y-1">
+              {patterns.filter(p => p.instrument === inst.id).map(p => (
+                <div
+                  key={p.id}
+                  draggable
+                  onDragStart={(e) => onDragStart(e, p)}
+                  className={`w-full px-3 py-2 rounded bg-zinc-800 border border-zinc-700 cursor-grab active:cursor-grabbing text-sm hover:bg-zinc-700`}
+                >
+                  {p.name}
+                </div>
+              ))}
+            </div>
+            {inst.id === 'piano' && (
+              <button
                 onClick={onSelectTranscribe}
                 className="w-full px-4 py-3 rounded-lg font-medium text-left bg-zinc-700 text-white shadow-lg hover:bg-zinc-600 transition-all mt-2"
               >
                 + Add Audio File (MP3/WAV)
-            </button>
-          )}
-        </div>
-      ))}
+              </button>
+            )}
+          </div>
+        );
+      })}
       
       {/* Dedicated Transcribed Audio Section */}
       <div className="mb-4 border-t border-zinc-800 pt-4">
@@ -1344,6 +1746,8 @@ function LoopArranger() {
   const [bpm, setBpm] = useState(DEFAULT_BPM);
   const [numBars, setNumBars] = useState(NUM_BARS_DEFAULT);
   const [isLooping, setIsLooping] = useState(true);
+  const [metronomeOn, setMetronomeOn] = useState(false);
+  const [tapTimes, setTapTimes] = useState([]);
   /** @type {[View, React.Dispatch<React.SetStateAction<View>>]} */
   const [view, setView] = useState({ type: "library" });
   /** @type {[Pattern[], React.Dispatch<React.SetStateAction<Pattern[]>>]} */
@@ -1358,33 +1762,45 @@ function LoopArranger() {
   /** @type {[ClipboardClip | null, React.Dispatch<React.SetStateAction<ClipboardClip | null>>]} */
   const [clipboard, setClipboard] = useState(null);
 
+  // Per-instrument parameters (volume, pan, pitch, filter, ADSR)
+  const [instrumentParams, setInstrumentParams] = useState({
+    drums: { volume: 0.8, pan: 0, pitch: 0, filterType: 'none', filterCutoff: 1000, filterResonance: 1, attack: 0.01, decay: 0.1, sustain: 0.7, release: 0.3 },
+    bass: { volume: 0.8, pan: 0, pitch: 0, filterType: 'lowpass', filterCutoff: 800, filterResonance: 1, attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4 },
+    synth: { volume: 0.8, pan: 0, pitch: 0, filterType: 'lowpass', filterCutoff: 1200, filterResonance: 1, attack: 0.05, decay: 0.1, sustain: 0.5, release: 0.3 },
+    piano: { volume: 0.8, pan: 0, pitch: 0, filterType: 'none', filterCutoff: 2000, filterResonance: 1, attack: 0.01, decay: 0.15, sustain: 0.4, release: 0.5 },
+    transcribed: { volume: 0.8, pan: 0, pitch: 0, filterType: 'none', filterCutoff: 1500, filterResonance: 1, attack: 0.02, decay: 0.1, sustain: 0.6, release: 0.3 }
+  });
+
   const patternsRef = useRef(patterns);
   const clipsRef = useRef(clips);
   const numBarsRef = useRef(numBars);
   const isLoopingRef = useRef(isLooping);
-  
+  const instrumentParamsRef = useRef(instrumentParams);
+
   const onStopRef = useRef(() => {});
-  
+
   const onStop = useCallback(() => {
     engine.stop();
     setPlaying(false);
     cancelAnimationFrame(playheadFrameRef.current);
     // Reset playhead position based on where it was stopped (optional: setPlayhead(0) for hard stop)
     // For now, let's keep it simple and rely on the next play starting from the current head
-  }, []); 
+  }, []);
   onStopRef.current = onStop;
 
   useEffect(() => { patternsRef.current = patterns; }, [patterns]);
   useEffect(() => { clipsRef.current = clips; }, [clips]);
   useEffect(() => { numBarsRef.current = numBars; }, [numBars]);
   useEffect(() => { isLoopingRef.current = isLooping; }, [isLooping]);
-  
+  useEffect(() => { instrumentParamsRef.current = instrumentParams; }, [instrumentParams]);
+
   const engine = useMemo(() => new AudioEngine(
-    patternsRef, 
+    patternsRef,
     clipsRef,
     numBarsRef,
     isLoopingRef,
-    onStopRef
+    onStopRef,
+    instrumentParamsRef
   ), []);
   
   useEffect(() => {
@@ -1423,15 +1839,55 @@ function LoopArranger() {
   };
   
   /**
-   * @param {React.ChangeEvent<HTMLInputElement>} e 
+   * @param {React.ChangeEvent<HTMLInputElement>} e
    */
   const handleBarInputChange = (e) => {
     if (playing) onStop();
     let val = parseInt(e.target.value, 10);
     if (isNaN(val)) val = 5;
-    val = clamp(val, 5, 100); 
+    val = clamp(val, 5, 100);
     setNumBars(val);
     setPlayhead(0);
+  };
+
+  /**
+   * Handle BPM change
+   * @param {number} newBpm
+   */
+  const handleBpmChange = (newBpm) => {
+    const clamped = clamp(newBpm, 40, 240);
+    setBpm(clamped);
+  };
+
+  /**
+   * Tap tempo - calculate BPM from tap intervals
+   */
+  const handleTapTempo = () => {
+    const now = Date.now();
+    const newTapTimes = [...tapTimes, now].slice(-4); // Keep last 4 taps
+    setTapTimes(newTapTimes);
+
+    if (newTapTimes.length >= 2) {
+      // Calculate average interval between taps
+      const intervals = [];
+      for (let i = 1; i < newTapTimes.length; i++) {
+        intervals.push(newTapTimes[i] - newTapTimes[i - 1]);
+      }
+      const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+      const calculatedBpm = Math.round(60000 / avgInterval);
+      handleBpmChange(calculatedBpm);
+    }
+
+    // Reset tap times after 2 seconds of inactivity
+    setTimeout(() => {
+      setTapTimes(times => {
+        const lastTap = times[times.length - 1];
+        if (lastTap && Date.now() - lastTap > 2000) {
+          return [];
+        }
+        return times;
+      });
+    }, 2000);
   };
 
   // --- Clip Editing Handlers ---
@@ -1599,19 +2055,53 @@ function LoopArranger() {
             Loop: {isLooping ? 'ON' : 'OFF'}
           </button>
 
-          <div className="ml-4 flex items-center gap-4">
-            <span className="text-lg font-mono tracking-widest text-lime-400">
-                {DEFAULT_BPM} BPM
-            </span>
-            
+          <div className="ml-4 flex items-center gap-6 flex-wrap">
+            {/* BPM Controls */}
+            <div className="flex items-center gap-3 border-r border-zinc-700 pr-6">
+              <label className="text-sm opacity-80">BPM:</label>
+              <input
+                type="number"
+                min="40"
+                max="240"
+                value={bpm}
+                onChange={(e) => handleBpmChange(parseInt(e.target.value) || 120)}
+                className="w-16 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-sm font-mono text-center focus:outline-none focus:ring-1 focus:ring-lime-500"
+              />
+              <input
+                type="range"
+                min="40"
+                max="240"
+                value={bpm}
+                onChange={(e) => handleBpmChange(parseInt(e.target.value))}
+                className="w-24 h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-lime-500"
+              />
+              <button
+                onClick={handleTapTempo}
+                className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-xs font-medium transition-all active:scale-95"
+                title="Tap to set tempo"
+              >
+                TAP
+              </button>
+              <button
+                onClick={() => setMetronomeOn(!metronomeOn)}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                  metronomeOn ? 'bg-lime-600 text-black' : 'bg-zinc-700 hover:bg-zinc-600'
+                }`}
+                title="Toggle metronome"
+              >
+                {metronomeOn ? '🔔 ON' : '🔕 OFF'}
+              </button>
+            </div>
+
+            {/* Timeline Length */}
             <div className="flex items-center gap-2">
               <label htmlFor="numBarsInput" className="text-sm opacity-80">Timeline Length (Bars):</label>
-              <input 
+              <input
                 id="numBarsInput"
                 type="number"
                 min="5"
                 max="100"
-                value={numBars} 
+                value={numBars}
                 onChange={handleBarInputChange}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-lime-500"
               />
@@ -1621,11 +2111,13 @@ function LoopArranger() {
         
         {/* Main Layout */}
         <div className="grid grid-cols-12 gap-6">
-          <LibraryPanel 
+          <LibraryPanel
             // @ts-ignore
             onSelectInstrument={(inst) => setView({ type: "sequencer", instrument: inst })}
             onSelectTranscribe={() => setView({ type: "transcribe" })}
             patterns={patterns}
+            instrumentParams={instrumentParams}
+            setInstrumentParams={setInstrumentParams}
           />
           <TimelinePanel 
             patterns={patterns}

@@ -74,6 +74,15 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('audioInput').click();
     }, 500);
   }
+
+  // Ensure audio context resumes on first user interaction (Safari/iOS)
+  const resumeAudio = async () => {
+    try { await initSynth(); } catch {}
+    document.removeEventListener('click', resumeAudio, true);
+    document.removeEventListener('touchstart', resumeAudio, true);
+  };
+  document.addEventListener('click', resumeAudio, true);
+  document.addEventListener('touchstart', resumeAudio, true);
 });
 
 // Preset configurations
@@ -274,7 +283,8 @@ function updateTimeDisplay() {
     document.getElementById('timeDisplay').textContent = `${fmt(currentTime)} / ${fmt(duration)}`;
 }
 
-function togglePlay() {
+async function togglePlay() {
+    try { await initSynth(); } catch (e) { console.warn('Audio init failed:', e); }
     if (!isPlaying) {
         isPlaying = true;
         document.getElementById('playBtn').classList.add('playing');
@@ -363,4 +373,3 @@ function returnToDashboard() {
 
     window.location.href = `dashboard.html?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(projectName)}`;
 }
-

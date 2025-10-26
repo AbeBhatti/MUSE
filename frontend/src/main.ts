@@ -172,7 +172,8 @@ function updateTimeDisplay() {
   ;(document.getElementById('timeDisplay') as HTMLElement).textContent = `${fmt(currentTime)} / ${fmt(duration)}`
 }
 
-function togglePlay() {
+async function togglePlay() {
+  await initSynth()
   if (!isPlaying) {
     isPlaying = true
     document.getElementById('playBtn')!.classList.add('playing')
@@ -232,5 +233,11 @@ function seekToPosition(t: number) {
 // Init
 document.addEventListener('DOMContentLoaded', () => {
   bindInputs()
+  const resumeAudio = async () => {
+    try { await initSynth() } catch {}
+    document.removeEventListener('click', resumeAudio, true)
+    document.removeEventListener('touchstart', resumeAudio, true)
+  }
+  document.addEventListener('click', resumeAudio, true)
+  document.addEventListener('touchstart', resumeAudio, true)
 })
-
