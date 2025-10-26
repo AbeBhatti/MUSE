@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VYBE Frontend Deployment Script
+# MUSE Frontend Deployment Script
 # This script builds and deploys the frontend to AWS S3 + CloudFront
 # with proper MIME types and cache invalidation
 
@@ -11,7 +11,7 @@ S3_BUCKET="vybe-frontend-assets"
 CLOUDFRONT_DIST_ID="E1XZ4DBIHC5C4S"
 REGION="us-east-1"
 
-echo "🚀 VYBE Frontend Deployment"
+echo "🚀 MUSE Frontend Deployment"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
@@ -86,8 +86,7 @@ upload_with_content_type() {
 
   aws s3 cp "$file" "s3://${bucket}/${key}" \
     --content-type "$content_type" \
-    --region "$REGION" \
-    --acl public-read
+    --region "$REGION"
 }
 
 # Upload all files with correct MIME types
@@ -101,8 +100,7 @@ if [ "$BUILD_DIR" = "dist" ]; then
     echo "   Uploading $key (application/javascript)"
     aws s3 cp "$file" "s3://${S3_BUCKET}/${key}" \
       --content-type "application/javascript" \
-      --region "$REGION" \
-      --acl public-read
+      --region "$REGION"
   done
 
   # Upload HTML files
@@ -111,8 +109,7 @@ if [ "$BUILD_DIR" = "dist" ]; then
     echo "   Uploading $key (text/html)"
     aws s3 cp "$file" "s3://${S3_BUCKET}/${key}" \
       --content-type "text/html" \
-      --region "$REGION" \
-      --acl public-read
+      --region "$REGION"
   done
 
   # Upload CSS files
@@ -121,8 +118,7 @@ if [ "$BUILD_DIR" = "dist" ]; then
     echo "   Uploading $key (text/css)"
     aws s3 cp "$file" "s3://${S3_BUCKET}/${key}" \
       --content-type "text/css" \
-      --region "$REGION" \
-      --acl public-read
+      --region "$REGION"
   done
 
   # Upload other asset files
@@ -138,8 +134,7 @@ if [ "$BUILD_DIR" = "dist" ]; then
     echo "   Uploading $key ($ct)"
     aws s3 cp "$file" "s3://${S3_BUCKET}/${key}" \
       --content-type "$ct" \
-      --region "$REGION" \
-      --acl public-read
+      --region "$REGION"
   done
 else
   # For non-build deployment, upload essential files
@@ -149,8 +144,7 @@ else
     echo "   Uploading $file (text/html)"
     aws s3 cp "$file" "s3://${S3_BUCKET}/${file}" \
       --content-type "text/html" \
-      --region "$REGION" \
-      --acl public-read
+      --region "$REGION"
   done
 
   echo "   Uploading JavaScript files..."
@@ -159,8 +153,7 @@ else
     echo "   Uploading $file (application/javascript)"
     aws s3 cp "$file" "s3://${S3_BUCKET}/${file}" \
       --content-type "application/javascript" \
-      --region "$REGION" \
-      --acl public-read
+      --region "$REGION"
   done
 
   # Upload config.js specifically
@@ -168,8 +161,7 @@ else
     echo "   Uploading config.js (application/javascript)"
     aws s3 cp config.js "s3://${S3_BUCKET}/config.js" \
       --content-type "application/javascript" \
-      --region "$REGION" \
-      --acl public-read
+      --region "$REGION"
   fi
 
   # Upload collab-client.js if exists
@@ -177,8 +169,7 @@ else
     echo "   Uploading collab-client.js (application/javascript)"
     aws s3 cp collab-client.js "s3://${S3_BUCKET}/collab-client.js" \
       --content-type "application/javascript" \
-      --region "$REGION" \
-      --acl public-read
+      --region "$REGION"
   fi
 fi
 

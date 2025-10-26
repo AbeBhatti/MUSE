@@ -1,8 +1,8 @@
-# VYBE - AWS Configuration Complete 
+# MUSE - AWS Configuration Complete 
 
 ## Overview
 
-Your VYBE collaborative beat-making application has been successfully configured with AWS services for production-ready authentication and data persistence.
+Your MUSE collaborative beat-making application has been successfully configured with AWS services for production-ready authentication and data persistence.
 
 ## What Was Set Up
 
@@ -12,30 +12,30 @@ Your VYBE collaborative beat-making application has been successfully configured
 - **Region**: `us-east-1`
 
 **Features Enabled:**
--  Email-based authentication
--  Email verification with confirmation codes
--  Password reset functionality
--  Secure password policy (8+ chars, uppercase, lowercase, numbers)
--  JWT token generation (ID, Access, Refresh tokens)
+-  Email-based authentication
+-  Email verification with confirmation codes
+-  Password reset functionality
+-  Secure password policy (8+ chars, uppercase, lowercase, numbers)
+-  JWT token generation (ID, Access, Refresh tokens)
 
 ### 2. DynamoDB Tables
 
-#### Users Table (`vybe-users`)
+#### Users Table (`muse-users`)
 - **Partition Key**: `userId` (String)
 - **Attributes**: email, displayName, profilePictureUrl, createdAt, lastLogin
 
-#### Projects Table (`vybe-projects`)
+#### Projects Table (`muse-projects`)
 - **Partition Key**: `projectId` (String)
 - **GSI**: `ownerId-index` (for querying user's projects)
 - **Attributes**: name, ownerId, bpm, createdAt, updatedAt, collaboratorCount
 
-#### ProjectCollaborators Table (`vybe-project-collaborators`)
+#### ProjectCollaborators Table (`muse-project-collaborators`)
 - **Partition Key**: `projectId` (String)
 - **Sort Key**: `userId` (String)
 - **GSI**: `userId-index` (for querying projects user has access to)
 - **Attributes**: role, addedAt, addedBy
 
-#### Beats Table (`vybe-beats`)
+#### Beats Table (`muse-beats`)
 - **Partition Key**: `projectId` (String)
 - **Attributes**: beatData (JSON), version, updatedBy, updatedAt
 
@@ -88,10 +88,10 @@ AWS_REGION=us-east-1
 COGNITO_USER_POOL_ID=us-east-1_EWLQNHfPY
 COGNITO_CLIENT_ID=42p4i1prmhnvglhsrsevh8veg3
 COGNITO_CLIENT_SECRET=your-client-secret-here
-DYNAMODB_USERS_TABLE=vybe-users
-DYNAMODB_PROJECTS_TABLE=vybe-projects
-DYNAMODB_COLLABORATORS_TABLE=vybe-project-collaborators
-DYNAMODB_BEATS_TABLE=vybe-beats
+DYNAMODB_USERS_TABLE=muse-users
+DYNAMODB_PROJECTS_TABLE=muse-projects
+DYNAMODB_COLLABORATORS_TABLE=muse-project-collaborators
+DYNAMODB_BEATS_TABLE=muse-beats
 PORT=1234
 NODE_ENV=development
 FRONTEND_URL=http://localhost:3000
@@ -165,7 +165,7 @@ curl -X POST http://localhost:1234/api/projects \
   -d '{"name":"My Beat","bpm":120}'
 ```
 
-## Verified Test Results 
+## Verified Test Results 
 
 **Test User Created:**
 - Email: `test@example.com`
@@ -178,10 +178,10 @@ curl -X POST http://localhost:1234/api/projects \
 - Owner: test@example.com
 
 **All DynamoDB Tables Verified:**
--  User profile stored in `vybe-users`
--  Project created in `vybe-projects`
--  User added as collaborator in `vybe-project-collaborators`
--  Initial beat data stored in `vybe-beats`
+-  User profile stored in `muse-users`
+-  Project created in `muse-projects`
+-  User added as collaborator in `muse-project-collaborators`
+-  Initial beat data stored in `muse-beats`
 
 ## Next Steps
 
@@ -237,10 +237,10 @@ curl -X POST http://localhost:1234/api/projects \
 - App Client: `42p4i1prmhnvglhsrsevh8veg3`
 
 ### DynamoDB Tables
-- `vybe-users`
-- `vybe-projects`
-- `vybe-project-collaborators`
-- `vybe-beats`
+- `muse-users`
+- `muse-projects`
+- `muse-project-collaborators`
+- `muse-beats`
 
 ## Cost Estimate
 
@@ -284,7 +284,7 @@ aws cognito-idp describe-user-pool --user-pool-id us-east-1_EWLQNHfPY
 aws dynamodb list-tables --region us-east-1
 
 # Check table status
-aws dynamodb describe-table --table-name vybe-users --region us-east-1
+aws dynamodb describe-table --table-name muse-users --region us-east-1
 ```
 
 ## Support
@@ -297,12 +297,12 @@ For issues or questions:
 
 ## Summary
 
-<� **Your VYBE application now has:**
--  Production-ready authentication with AWS Cognito
--  Persistent data storage with DynamoDB
--  Secure API endpoints with JWT validation
--  Real-time collaboration with authenticated WebSockets
--  User management and project ownership
--  Scalable architecture ready for AWS deployment
+<� **Your MUSE application now has:**
+-  Production-ready authentication with AWS Cognito
+-  Persistent data storage with DynamoDB
+-  Secure API endpoints with JWT validation
+-  Real-time collaboration with authenticated WebSockets
+-  User management and project ownership
+-  Scalable architecture ready for AWS deployment
 
 The foundation is complete! You can now build out the collaborative features and deploy to production when ready.

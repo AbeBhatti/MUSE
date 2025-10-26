@@ -1,3 +1,3 @@
-# Top-level Python requirements for MÜSE VYBE
+# Top-level Python requirements for MUSE
 # Delegates to the audio/MIDI editor requirements.
 -r audio-midi/requirements.txt

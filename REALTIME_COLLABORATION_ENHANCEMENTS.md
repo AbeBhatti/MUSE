@@ -1,5 +1,5 @@
 # Real-Time Collaboration Enhancements
-## Google Docs-like Features for VYBE DAW
+## Google Docs-like Features for MUSE DAW
 
 This guide helps you enhance your existing real-time collaboration infrastructure with advanced features similar to Google Docs.
 
@@ -8,7 +8,7 @@ This guide helps you enhance your existing real-time collaboration infrastructur
 ## 📋 Current Status
 
 ### ✅ Already Implemented
-Your VYBE application already has the core infrastructure:
+Your MUSE application already has the core infrastructure:
 
 1. **Yjs CRDT** - Conflict-free Replicated Data Type for collaborative editing
    - Location: `frontend/app.js:46-54`
@@ -273,7 +273,7 @@ Add to your DAW interface:
 
 ```html
 <div class="header">
-  <h1>VYBE DAW</h1>
+  <h1>MUSE DAW</h1>
   <div class="presence-container">
     <div id="active-users"></div>
     <span id="user-count">0</span> online
@@ -576,7 +576,7 @@ app.post('/api/projects/snapshot', verifyToken, async (req, res) => {
 
   try {
     await docClient.send(new PutCommand({
-      TableName: 'vybe-snapshots',
+      TableName: 'muse-snapshots',
       Item: {
         projectId,
         snapshotId: `${projectId}-${timestamp}`,

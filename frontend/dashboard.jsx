@@ -26,10 +26,18 @@ const NUM_BARS_DEFAULT = 16; // Default timeline length
 const PIXELS_PER_BAR = 128; // Timeline horizontal scale
 const PIANO_RECORDING_BARS = 4;
 const MAX_TRANSCRIPTION_BARS = 8; // Max bars for transcribed clip
-const API_BASE =
-  ['localhost', '127.0.0.1'].includes(window.location.hostname)
-    ? 'http://localhost:1234'
-    : '';
+const API_BASE = (() => {
+  // Use BACKEND_URL from config.js if available
+  if (typeof window.BACKEND_URL !== 'undefined' && window.BACKEND_URL) {
+    return window.BACKEND_URL;
+  }
+  // Fallback to localhost for local development
+  if (['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+    return 'http://localhost:1234';
+  }
+  // Default to same-origin
+  return '';
+})();
 
 // ---------- Types ----------
 /** @typedef {"drums" | "bass" | "synth" | "piano" | "transcribed" | "vocals"} InstrumentId */
@@ -2849,7 +2857,7 @@ function LoopArranger() {
       
       <div className="max-w-7xl mx-auto">
         <div className="flex-1 flex items-center">
-        <h1 className="text-2xl font-bold text-white">VYBE</h1>
+        <h1 className="text-2xl font-bold text-white">MUSE</h1>
         <span className="ml-3 text-xs bg-zinc-700 px-2 py-1 rounded-full">DAW</span>
         <button
           onClick={() => setShowShareModal(true)}

@@ -46,7 +46,7 @@ If your frontend is on CloudFront and backend on ECS/ALB:
 
 ```javascript
 // frontend/config.production.js
-window.BACKEND_URL = 'https://vybe-alb-1234567890.us-east-1.elb.amazonaws.com';
+window.BACKEND_URL = 'https://muse-alb-1234567890.us-east-1.elb.amazonaws.com';
 ```
 
 3. Replace config.js during deployment:
@@ -69,7 +69,7 @@ npm run build
 cp config.production.js dist/config.js
 
 # Upload to S3
-aws s3 sync dist/ s3://vybe-frontend-YOUR-ID/ --delete
+aws s3 sync dist/ s3://muse-frontend-YOUR-ID/ --delete
 ```
 
 #### Option 3: Environment-Specific Build

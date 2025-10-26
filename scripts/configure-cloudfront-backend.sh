@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to configure CloudFront backend URL for VYBE
+# Script to configure CloudFront backend URL for MUSE
 # This script helps you find your ALB and configure CloudFront
 
 set -e
@@ -11,7 +11,7 @@ echo ""
 # Get all ALBs in the region
 ALB_ARN=$(aws elbv2 describe-load-balancers \
   --region us-east-1 \
-  --query 'LoadBalancers[?contains(LoadBalancerName, `vybe`) || contains(LoadBalancerName, `Vybe`)].LoadBalancerArn' \
+  --query 'LoadBalancers[?contains(LoadBalancerName, `muse`) || contains(LoadBalancerName, `Muse`)].LoadBalancerArn' \
   --output text)
 
 if [ -z "$ALB_ARN" ]; then
@@ -19,7 +19,7 @@ if [ -z "$ALB_ARN" ]; then
   echo ""
   echo "To create an ALB, run:"
   echo "  aws elbv2 create-load-balancer \\"
-  echo "    --name vybe-alb \\"
+  echo "    --name muse-alb \\"
   echo "    --scheme internet-facing \\"
   echo "    --type application \\"
   echo "    --subnets subnet-XXXXX subnet-YYYYY"
@@ -40,7 +40,7 @@ echo ""
 
 # Get CloudFront distribution
 CF_DIST=$(aws cloudfront list-distributions \
-  --query 'DistributionList.Items[?contains(Comment, `vybe`) || contains(Comment, `Vybe`) || Id==`d1dut83snnf5pc`].Id' \
+  --query 'DistributionList.Items[?contains(Comment, `muse`) || contains(Comment, `Muse`) || Id==`d1dut83snnf5pc`].Id' \
   --output text)
 
 if [ -z "$CF_DIST" ]; then

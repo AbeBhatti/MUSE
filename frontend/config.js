@@ -5,7 +5,7 @@
  * For AWS deployment: Set window.BACKEND_URL to your ALB URL
  * 
  * Example for AWS:
- * window.BACKEND_URL = 'https://vybe-alb-1234567890.us-east-1.elb.amazonaws.com';
+ * window.BACKEND_URL = 'https://muse-alb-1234567890.us-east-1.elb.amazonaws.com';
  * 
  * This file should be replaced during AWS deployment with a version that sets the correct backend URL.
  */

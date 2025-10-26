@@ -1,4 +1,4 @@
-# VYBE DAW - Quick Start Guide
+# MUSE DAW - Quick Start Guide
 
 ## 🚀 Get Started in 5 Minutes
 
@@ -11,7 +11,7 @@
 ## Option 1: Run DAW Without MP3-to-MIDI (Fastest)
 
 ```bash
-cd /Users/rishits/VYBE/backend
+cd /Users/rishits/MUSE/backend
 npm start
 ```
 
@@ -28,7 +28,7 @@ Then open: **http://localhost:1234/midi-editor.html**
 # Using pyenv (recommended)
 brew install pyenv
 pyenv install 3.11.9
-cd /Users/rishits/VYBE
+cd /Users/rishits/MUSE
 pyenv local 3.11.9
 
 # Verify
@@ -37,7 +37,7 @@ python3 --version  # Should show 3.11.9
 
 ### Step 2: Install Python Dependencies
 ```bash
-cd /Users/rishits/VYBE
+cd /Users/rishits/MUSE
 pip3 install -r audio-midi/requirements.txt
 ```
 
@@ -48,7 +48,7 @@ This will take 5-10 minutes. It installs:
 
 ### Step 3: Start Both Servers
 ```bash
-cd /Users/rishits/VYBE
+cd /Users/rishits/MUSE
 ./start-all.sh
 ```
 
@@ -67,7 +67,7 @@ This starts:
 ## 📁 What You Have Now
 
 ```
-/Users/rishits/VYBE/
+/Users/rishits/MUSE/
 │
 ├── backend/                   # Node.js + Express + Socket.io
 │   ├── server.js             # Main backend server

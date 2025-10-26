@@ -11,7 +11,7 @@ set -euo pipefail
 
 DIST_ID="${1:-E1XZ4DBIHC5C4S}"
 PATH_PATTERN="${2:-api/*}"
-POLICY_NAME="${POLICY_NAME:-vybe-forward-authorization-header}"
+POLICY_NAME="${POLICY_NAME:-muse-forward-authorization-header}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -33,7 +33,7 @@ if [[ -z "${POLICY_ID}" || "${POLICY_ID}" == "None" ]]; then
   echo "Creating new origin request policy..."
   cat > "${TMP_DIR}/origin-request-policy.json" <<'JSON'
 {
-  "Name": "vybe-forward-authorization-header",
+  "Name": "muse-forward-authorization-header",
   "Comment": "Forward Authorization header and all query strings for API requests",
   "HeadersConfig": {
     "HeaderBehavior": "allViewer"

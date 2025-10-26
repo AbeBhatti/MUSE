@@ -23,7 +23,7 @@ aws elbv2 describe-load-balancers --region us-east-1 \
   --output text
 ```
 
-This will output your ALB URL (e.g., `vybe-alb-1234567890.us-east-1.elb.amazonaws.com`)
+This will output your ALB URL (e.g., `muse-alb-1234567890.us-east-1.elb.amazonaws.com`)
 
 ## Permanent Fix
 
@@ -82,7 +82,7 @@ If you still get 401 errors:
 2. **Check ALB security groups**: Make sure the ALB allows traffic from CloudFront (0.0.0.0/0 on port 80/443).
 3. **Check backend logs**: 
    ```bash
-   aws logs tail /ecs/vybe-backend --follow
+   aws logs tail /ecs/muse-backend --follow
    ```
 
 ## Verify ALB is Running
@@ -90,7 +90,7 @@ If you still get 401 errors:
 Check if your ECS tasks are running:
 
 ```bash
-aws ecs list-tasks --cluster vybe-cluster
+aws ecs list-tasks --cluster muse-cluster
 ```
 
 Check ALB target health:

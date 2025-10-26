@@ -9,7 +9,7 @@ bash scripts/create-cloudfront-auth-policy.sh E1XZ4DBIHC5C4S api/*
 ```
 
 The script will:
-1. Create (or reuse) an **Origin Request Policy** named `vybe-forward-authorization-header` that forwards all viewer headers (including `Authorization`) and all query strings.
+1. Create (or reuse) an **Origin Request Policy** named `muse-forward-authorization-header` that forwards all viewer headers (including `Authorization`) and all query strings.
 2. Apply that policy to the `api/*` behavior on distribution `E1XZ4DBIHC5C4S`.
 3. Output when the change is submitted (propagation typically takes 10–15 minutes).
 

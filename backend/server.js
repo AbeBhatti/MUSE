@@ -69,10 +69,10 @@ const dynamoClient = new DynamoDBClient({ region: AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
 // DynamoDB table names
-const USERS_TABLE = process.env.DYNAMODB_USERS_TABLE || 'vybe-users';
-const PROJECTS_TABLE = process.env.DYNAMODB_PROJECTS_TABLE || 'vybe-projects';
-const COLLABORATORS_TABLE = process.env.DYNAMODB_COLLABORATORS_TABLE || 'vybe-project-collaborators';
-const BEATS_TABLE = process.env.DYNAMODB_BEATS_TABLE || 'vybe-beats';
+const USERS_TABLE = process.env.DYNAMODB_USERS_TABLE || 'muse-users';
+const PROJECTS_TABLE = process.env.DYNAMODB_PROJECTS_TABLE || 'muse-projects';
+const COLLABORATORS_TABLE = process.env.DYNAMODB_COLLABORATORS_TABLE || 'muse-project-collaborators';
+const BEATS_TABLE = process.env.DYNAMODB_BEATS_TABLE || 'muse-beats';
 
 // JWKS client for token verification
 const client = jwksClient({

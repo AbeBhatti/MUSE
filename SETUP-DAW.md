@@ -1,4 +1,4 @@
-# MÜSE VYBE - DAW Setup Guide
+# MUSE DAW - DAW Setup Guide
 
 ## Overview
 
@@ -34,7 +34,7 @@ brew install pyenv
 pyenv install 3.11.9
 
 # Set local Python version for this project
-cd /Users/rishits/VYBE
+cd /Users/rishits/MUSE
 pyenv local 3.11.9
 
 # Verify
@@ -44,10 +44,10 @@ python3 --version  # Should show 3.11.9
 #### Option B: Using Conda
 ```bash
 # Create environment with Python 3.11
-conda create -n vybe-daw python=3.11
+conda create -n muse-daw python=3.11
 
 # Activate environment
-conda activate vybe-daw
+conda activate muse-daw
 
 # Install dependencies
 pip install -r audio-midi/requirements.txt
@@ -59,7 +59,7 @@ pip install -r audio-midi/requirements.txt
 
 ### Step 1: Install Node.js Dependencies
 ```bash
-cd /Users/rishits/VYBE
+cd /Users/rishits/MUSE
 
 # Install backend dependencies
 cd backend
@@ -72,7 +72,7 @@ npm install @tonejs/midi tone
 
 ### Step 2: Install Python Dependencies
 ```bash
-cd /Users/rishits/VYBE
+cd /Users/rishits/MUSE
 
 # Make sure you're using Python 3.10 or 3.11
 python3 --version
@@ -85,7 +85,7 @@ pip3 install -r audio-midi/requirements.txt
 
 ### Step 3: Configure Environment Variables
 ```bash
-cd /Users/rishits/VYBE/backend
+cd /Users/rishits/MUSE/backend
 
 # Copy example env file
 cp .env.example .env
@@ -110,7 +110,7 @@ Required environment variables:
 
 ### Quick Start (Both Servers)
 ```bash
-cd /Users/rishits/VYBE
+cd /Users/rishits/MUSE
 ./start-all.sh
 ```
 
@@ -122,13 +122,13 @@ This will start:
 
 #### Start Node.js Backend Only
 ```bash
-cd /Users/rishits/VYBE/backend
+cd /Users/rishits/MUSE/backend
 npm start
 ```
 
 #### Start Python Flask Server Only
 ```bash
-cd /Users/rishits/VYBE/audio-midi
+cd /Users/rishits/MUSE/audio-midi
 python3 server.py
 ```
 

@@ -1,4 +1,4 @@
-# VYBE DAW Integration Summary
+# MUSE DAW Integration Summary
 
 ## ✅ Completed Steps
 
@@ -23,7 +23,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    VYBE Platform                     │
+│                    MUSE Platform                     │
 ├─────────────────────────────────────────────────────┤
 │                                                      │
 │  Frontend (React + Tone.js)                         │
@@ -64,13 +64,13 @@
 # Option A: Using pyenv (Recommended)
 brew install pyenv
 pyenv install 3.11.9
-cd /Users/rishits/VYBE
+cd /Users/rishits/MUSE
 pyenv local 3.11.9
 pip install -r audio-midi/requirements.txt
 
 # Option B: Using Conda
-conda create -n vybe python=3.11
-conda activate vybe
+conda create -n muse python=3.11
+conda activate muse
 pip install -r audio-midi/requirements.txt
 ```
 
@@ -291,7 +291,7 @@ Add Tone.js MIDI library:
 ### Step 4: Start the Servers
 
 ```bash
-cd /Users/rishits/VYBE
+cd /Users/rishits/MUSE
 
 # Make sure Python 3.11 is active
 python3 --version  # Should be 3.11.x
@@ -315,7 +315,7 @@ Since the full DAW enhancement is complex, here's a simpler interim solution:
 ### Option 1: Use Standalone MIDI Editor (Already Working)
 
 ```bash
-cd /Users/rishits/VYBE/audio-midi
+cd /Users/rishits/MUSE/audio-midi
 python3 server.py
 ```
 

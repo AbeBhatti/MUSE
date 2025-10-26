@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# MÜSE VYBE - Startup Script
+# MÜSE MUSE - Startup Script
 # Starts Node.js backend. Backend calls Python locally for transcription.
 
-echo "🎵 Starting MÜSE VYBE..."
+echo "🎵 Starting MÜSE..."
 echo ""
 
 # Colors for output
@@ -68,7 +68,7 @@ sleep 2
 
 echo ""
 echo -e "${GREEN}══════════════════════════════════════════${NC}"
-echo -e "${GREEN}  MÜSE VYBE is now running!${NC}"
+echo -e "${GREEN}  MÜSE is now running!${NC}"
 echo -e "${GREEN}══════════════════════════════════════════${NC}"
 echo ""
 echo -e "${BLUE}Frontend:${NC}        http://localhost:1234"

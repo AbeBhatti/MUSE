@@ -1,7 +1,7 @@
-# AWS Deployment Guide - VYBE DAW
+# AWS Deployment Guide - MUSE DAW
 ## Complete Step-by-Step Production Deployment
 
-This guide provides detailed instructions for deploying your VYBE collaborative DAW to AWS infrastructure.
+This guide provides detailed instructions for deploying your MUSE collaborative DAW to AWS infrastructure.
 
 ---
 
@@ -47,7 +47,7 @@ This guide provides detailed instructions for deploying your VYBE collaborative 
        │ HTTPS
 ┌──────▼───────────────┐
 │   Route 53 (DNS)     │
-│  vybe.yourname.com   │
+│  muse.yourname.com   │
 └──────┬───────────────┘
        │
 ┌──────▼───────────────┐
@@ -95,7 +95,7 @@ This guide provides detailed instructions for deploying your VYBE collaborative 
 
 ### 2. Domain Name (Optional but Recommended)
 - Register domain via Route 53 or external provider
-- Example: `vybe.yourname.com`
+- Example: `muse.yourname.com`
 
 ### 3. Local Tools
 ```bash
@@ -144,7 +144,7 @@ aws configure
 
 ### Step 1: Create Dockerfile
 
-Create `/Users/rishits/VYBE/backend/Dockerfile`:
+Create `/Users/rishits/MUSE/backend/Dockerfile`:
 
 ```dockerfile
 FROM node:20-alpine
@@ -189,25 +189,25 @@ app.get('/health', (req, res) => {
 
 ```bash
 # Navigate to backend
-cd /Users/rishits/VYBE/backend
+cd /Users/rishits/MUSE/backend
 
 # Build Docker image
-docker build -t vybe-backend:latest .
+docker build -t muse-backend:latest .
 
 # Test locally
-docker run -p 1234:1234 --env-file .env vybe-backend:latest
+docker run -p 1234:1234 --env-file .env muse-backend:latest
 
 # Create ECR repository
-aws ecr create-repository --repository-name vybe-backend --region us-east-1
+aws ecr create-repository --repository-name muse-backend --region us-east-1
 
 # Get ECR login
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
 
 # Tag image
-docker tag vybe-backend:latest YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/vybe-backend:latest
+docker tag muse-backend:latest YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/muse-backend:latest
 
 # Push to ECR
-docker push YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/vybe-backend:latest
+docker push YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/muse-backend:latest
 ```
 
 ### Step 4: Create ECS Cluster
@@ -215,7 +215,7 @@ docker push YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/vybe-backend:latest
 ```bash
 # Create cluster
 aws ecs create-cluster \
-  --cluster-name vybe-cluster \
+  --cluster-name muse-cluster \
   --region us-east-1
 
 # Create task execution role
@@ -242,7 +242,7 @@ Create `task-definition.json`:
 
 ```json
 {
-  "family": "vybe-backend",
+  "family": "muse-backend",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
@@ -251,8 +251,8 @@ Create `task-definition.json`:
   "taskRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
-      "name": "vybe-backend",
-      "image": "YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/vybe-backend:latest",
+      "name": "muse-backend",
+      "image": "YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/muse-backend:latest",
       "portMappings": [
         {
           "containerPort": 1234,
@@ -267,21 +267,21 @@ Create `task-definition.json`:
       "secrets": [
         {
           "name": "COGNITO_USER_POOL_ID",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:vybe/cognito:COGNITO_USER_POOL_ID::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:muse/cognito:COGNITO_USER_POOL_ID::"
         },
         {
           "name": "COGNITO_CLIENT_ID",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:vybe/cognito:COGNITO_CLIENT_ID::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:muse/cognito:COGNITO_CLIENT_ID::"
         },
         {
           "name": "COGNITO_CLIENT_SECRET",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:vybe/cognito:COGNITO_CLIENT_SECRET::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:muse/cognito:COGNITO_CLIENT_SECRET::"
         }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/vybe-backend",
+          "awslogs-group": "/ecs/muse-backend",
           "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "ecs"
         }
@@ -301,8 +301,8 @@ aws ecs register-task-definition --cli-input-json file://task-definition.json
 ```bash
 # Create security group for ALB
 aws ec2 create-security-group \
-  --group-name vybe-alb-sg \
-  --description "Security group for VYBE ALB" \
+  --group-name muse-alb-sg \
+  --description "Security group for MUSE ALB" \
   --vpc-id YOUR_VPC_ID
 
 # Allow HTTP/HTTPS traffic
@@ -320,7 +320,7 @@ aws ec2 authorize-security-group-ingress \
 
 # Create ALB
 aws elbv2 create-load-balancer \
-  --name vybe-alb \
+  --name muse-alb \
   --subnets subnet-XXXXX subnet-YYYYY \
   --security-groups sg-XXXXX \
   --scheme internet-facing \
@@ -329,7 +329,7 @@ aws elbv2 create-load-balancer \
 
 # Create target group with sticky sessions (for WebSocket)
 aws elbv2 create-target-group \
-  --name vybe-backend-tg \
+  --name muse-backend-tg \
   --protocol HTTP \
   --port 1234 \
   --vpc-id YOUR_VPC_ID \
@@ -342,28 +342,28 @@ aws elbv2 create-target-group \
 
 # Enable sticky sessions
 aws elbv2 modify-target-group-attributes \
-  --target-group-arn arn:aws:elasticloadbalancing:us-east-1:YOUR_ACCOUNT_ID:targetgroup/vybe-backend-tg/XXXXX \
+  --target-group-arn arn:aws:elasticloadbalancing:us-east-1:YOUR_ACCOUNT_ID:targetgroup/muse-backend-tg/XXXXX \
   --attributes Key=stickiness.enabled,Value=true Key=stickiness.type,Value=lb_cookie Key=stickiness.lb_cookie.duration_seconds,Value=86400
 
 # Create listener
 aws elbv2 create-listener \
-  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:YOUR_ACCOUNT_ID:loadbalancer/app/vybe-alb/XXXXX \
+  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:YOUR_ACCOUNT_ID:loadbalancer/app/muse-alb/XXXXX \
   --protocol HTTP \
   --port 80 \
-  --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:YOUR_ACCOUNT_ID:targetgroup/vybe-backend-tg/XXXXX
+  --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:YOUR_ACCOUNT_ID:targetgroup/muse-backend-tg/XXXXX
 ```
 
 ### Step 7: Create ECS Service
 
 ```bash
 aws ecs create-service \
-  --cluster vybe-cluster \
-  --service-name vybe-backend-service \
-  --task-definition vybe-backend \
+  --cluster muse-cluster \
+  --service-name muse-backend-service \
+  --task-definition muse-backend \
   --desired-count 2 \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[subnet-XXXXX,subnet-YYYYY],securityGroups=[sg-XXXXX],assignPublicIp=ENABLED}" \
-  --load-balancers "targetGroupArn=arn:aws:elasticloadbalancing:us-east-1:YOUR_ACCOUNT_ID:targetgroup/vybe-backend-tg/XXXXX,containerName=vybe-backend,containerPort=1234"
+  --load-balancers "targetGroupArn=arn:aws:elasticloadbalancing:us-east-1:YOUR_ACCOUNT_ID:targetgroup/muse-backend-tg/XXXXX,containerName=muse-backend,containerPort=1234"
 ```
 
 ### Step 8: Setup Auto-scaling
@@ -373,7 +373,7 @@ aws ecs create-service \
 aws application-autoscaling register-scalable-target \
   --service-namespace ecs \
   --scalable-dimension ecs:service:DesiredCount \
-  --resource-id service/vybe-cluster/vybe-backend-service \
+  --resource-id service/muse-cluster/muse-backend-service \
   --min-capacity 2 \
   --max-capacity 10
 
@@ -381,8 +381,8 @@ aws application-autoscaling register-scalable-target \
 aws application-autoscaling put-scaling-policy \
   --service-namespace ecs \
   --scalable-dimension ecs:service:DesiredCount \
-  --resource-id service/vybe-cluster/vybe-backend-service \
-  --policy-name vybe-cpu-scaling \
+  --resource-id service/muse-cluster/muse-backend-service \
+  --policy-name muse-cpu-scaling \
   --policy-type TargetTrackingScaling \
   --target-tracking-scaling-policy-configuration '{
     "TargetValue": 70.0,
@@ -399,8 +399,8 @@ aws application-autoscaling put-scaling-policy \
 ```bash
 # Create security group for Redis
 aws ec2 create-security-group \
-  --group-name vybe-redis-sg \
-  --description "Security group for VYBE Redis" \
+  --group-name muse-redis-sg \
+  --description "Security group for MUSE Redis" \
   --vpc-id YOUR_VPC_ID
 
 # Allow Redis traffic from ECS tasks
@@ -412,7 +412,7 @@ aws ec2 authorize-security-group-ingress \
 
 # Create Redis cluster
 aws elasticache create-cache-cluster \
-  --cache-cluster-id vybe-redis \
+  --cache-cluster-id muse-redis \
   --cache-node-type cache.t3.micro \
   --engine redis \
   --engine-version 7.0 \
@@ -424,7 +424,7 @@ aws elasticache create-cache-cluster \
 Update backend code to use Redis adapter:
 
 ```bash
-cd /Users/rishits/VYBE/backend
+cd /Users/rishits/MUSE/backend
 npm install @socket.io/redis-adapter redis
 ```
 
@@ -452,27 +452,27 @@ Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
 ```bash
 # Create key pair
 aws ec2 create-key-pair \
-  --key-name vybe-keypair \
+  --key-name muse-keypair \
   --query 'KeyMaterial' \
-  --output text > vybe-keypair.pem
+  --output text > muse-keypair.pem
 
-chmod 400 vybe-keypair.pem
+chmod 400 muse-keypair.pem
 
 # Launch t3.small instance
 aws ec2 run-instances \
   --image-id ami-0c55b159cbfafe1f0 \
   --instance-type t3.small \
-  --key-name vybe-keypair \
+  --key-name muse-keypair \
   --security-group-ids sg-XXXXX \
   --subnet-id subnet-XXXXX \
-  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=vybe-backend}]'
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=muse-backend}]'
 ```
 
 ### Step 2: Install Dependencies
 
 ```bash
 # SSH into instance
-ssh -i vybe-keypair.pem ec2-user@YOUR_INSTANCE_IP
+ssh -i muse-keypair.pem ec2-user@YOUR_INSTANCE_IP
 
 # Install Node.js
 curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
@@ -486,7 +486,7 @@ sudo npm install -g pm2
 
 # Clone your repository or upload code
 # Option 1: Upload via SCP
-scp -i vybe-keypair.pem -r /Users/rishits/VYBE/backend ec2-user@YOUR_INSTANCE_IP:~/
+scp -i muse-keypair.pem -r /Users/rishits/MUSE/backend ec2-user@YOUR_INSTANCE_IP:~/
 
 # Install dependencies
 cd ~/backend
@@ -502,10 +502,10 @@ AWS_REGION=us-east-1
 COGNITO_USER_POOL_ID=us-east-1_EWLQNHfPY
 COGNITO_CLIENT_ID=42p4i1prmhnvglhsrsevh8veg3
 COGNITO_CLIENT_SECRET=your-secret-here
-DYNAMODB_USERS_TABLE=vybe-users
-DYNAMODB_PROJECTS_TABLE=vybe-projects
-DYNAMODB_COLLABORATORS_TABLE=vybe-project-collaborators
-DYNAMODB_BEATS_TABLE=vybe-beats
+DYNAMODB_USERS_TABLE=muse-users
+DYNAMODB_PROJECTS_TABLE=muse-projects
+DYNAMODB_COLLABORATORS_TABLE=muse-project-collaborators
+DYNAMODB_BEATS_TABLE=muse-beats
 PORT=1234
 NODE_ENV=production
 FRONTEND_URL=https://your-domain.com
@@ -516,7 +516,7 @@ EOF
 
 ```bash
 # Start application
-pm2 start server.js --name vybe-backend
+pm2 start server.js --name muse-backend
 
 # Configure PM2 to start on boot
 pm2 startup
@@ -533,8 +533,8 @@ pm2 monit
 sudo amazon-linux-extras install nginx1
 
 # Configure Nginx
-sudo cat > /etc/nginx/conf.d/vybe.conf << EOF
-upstream vybe_backend {
+sudo cat > /etc/nginx/conf.d/muse.conf << EOF
+upstream muse_backend {
     server localhost:1234;
 }
 
@@ -543,7 +543,7 @@ server {
     server_name your-domain.com;
 
     location / {
-        proxy_pass http://vybe_backend;
+        proxy_pass http://muse_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -576,7 +576,7 @@ sudo systemctl enable nginx
 ### Step 1: Build Frontend
 
 ```bash
-cd /Users/rishits/VYBE/frontend
+cd /Users/rishits/MUSE/frontend
 
 # Install dependencies
 npm install
@@ -591,13 +591,13 @@ npm run build
 
 ```bash
 # Create bucket
-aws s3 mb s3://vybe-frontend-YOUR-UNIQUE-ID --region us-east-1
+aws s3 mb s3://muse-frontend-YOUR-UNIQUE-ID --region us-east-1
 
 # Upload files
-aws s3 sync dist/ s3://vybe-frontend-YOUR-UNIQUE-ID/ --delete
+aws s3 sync dist/ s3://muse-frontend-YOUR-UNIQUE-ID/ --delete
 
 # Configure bucket for static website hosting
-aws s3 website s3://vybe-frontend-YOUR-UNIQUE-ID/ \
+aws s3 website s3://muse-frontend-YOUR-UNIQUE-ID/ \
   --index-document index.html \
   --error-document index.html
 ```
@@ -607,16 +607,16 @@ aws s3 website s3://vybe-frontend-YOUR-UNIQUE-ID/ \
 ```bash
 # Create distribution
 aws cloudfront create-distribution \
-  --origin-domain-name vybe-frontend-YOUR-UNIQUE-ID.s3.amazonaws.com \
+  --origin-domain-name muse-frontend-YOUR-UNIQUE-ID.s3.amazonaws.com \
   --default-root-object index.html
 ```
 
 Or use AWS Console:
 1. Go to CloudFront → Create Distribution
-2. Origin Domain: `vybe-frontend-YOUR-UNIQUE-ID.s3.amazonaws.com`
+2. Origin Domain: `muse-frontend-YOUR-UNIQUE-ID.s3.amazonaws.com`
 3. Default Root Object: `index.html`
 4. Price Class: Use Only North America and Europe
-5. Alternate Domain Names: `vybe.yourname.com`
+5. Alternate Domain Names: `muse.yourname.com`
 6. SSL Certificate: Request ACM certificate
 7. Create Distribution
 
@@ -656,8 +656,8 @@ export default {
 ```bash
 # Request certificate in us-east-1 (required for CloudFront)
 aws acm request-certificate \
-  --domain-name vybe.yourname.com \
-  --subject-alternative-names "*.vybe.yourname.com" \
+  --domain-name muse.yourname.com \
+  --subject-alternative-names "*.muse.yourname.com" \
   --validation-method DNS \
   --region us-east-1
 ```
@@ -677,7 +677,7 @@ aws acm describe-certificate \
 ```bash
 # Create hosted zone (if using Route 53)
 aws route53 create-hosted-zone \
-  --name vybe.yourname.com \
+  --name muse.yourname.com \
   --caller-reference $(date +%s)
 
 # Create A record for frontend (CloudFront)
@@ -685,8 +685,8 @@ aws route53 create-hosted-zone \
 ```
 
 Example Route 53 records:
-- `vybe.yourname.com` → CloudFront Distribution (A record - Alias)
-- `api.vybe.yourname.com` → Application Load Balancer (A record - Alias)
+- `muse.yourname.com` → CloudFront Distribution (A record - Alias)
+- `api.muse.yourname.com` → Application Load Balancer (A record - Alias)
 
 ---
 
@@ -696,11 +696,11 @@ Example Route 53 records:
 
 ```bash
 # Create log group
-aws logs create-log-group --log-group-name /ecs/vybe-backend
+aws logs create-log-group --log-group-name /ecs/muse-backend
 
 # Create CloudWatch dashboard
 aws cloudwatch put-dashboard \
-  --dashboard-name vybe-dashboard \
+  --dashboard-name muse-dashboard \
   --dashboard-body file://dashboard.json
 ```
 
@@ -709,7 +709,7 @@ aws cloudwatch put-dashboard \
 ```bash
 # High CPU alarm
 aws cloudwatch put-metric-alarm \
-  --alarm-name vybe-high-cpu \
+  --alarm-name muse-high-cpu \
   --alarm-description "Alert when CPU exceeds 80%" \
   --metric-name CPUUtilization \
   --namespace AWS/ECS \
@@ -721,7 +721,7 @@ aws cloudwatch put-metric-alarm \
 
 # Error rate alarm
 aws cloudwatch put-metric-alarm \
-  --alarm-name vybe-high-errors \
+  --alarm-name muse-high-errors \
   --alarm-description "Alert on high error rate" \
   --metric-name 5XXError \
   --namespace AWS/ApplicationELB \
