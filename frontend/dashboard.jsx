@@ -1670,20 +1670,34 @@ function LoopArranger() {
     setPatterns(p => [...p, pattern]);
     setView({ type: "library" });
     
-    // Auto-place transcribed clip on timeline at bar 0
-    if (pattern.instrument === 'transcribed') {
-        // @ts-ignore
-        const clipBars = pattern.data.audioLengthBars;
-        /** @type {TimelineClip} */
-        const newClip = {
-            id: uid(),
-            patternId: pattern.id,
-            instrument: 'transcribed',
-            startBar: 0,
-            bars: clipBars,
-        };
-        setClips(c => [...c, newClip]);
+    // Auto-place clip on timeline at bar 0 based on instrument type
+    // @ts-ignore
+    const clipBars = pattern.data.audioLengthBars || (pattern.instrument === 'piano' ? PIANO_RECORDING_BARS : 2);
+    
+    // Get instrument type, which could be drums, bass, synth, piano, or transcribed
+    const instrumentType = pattern.instrument;
+    
+    // Check if this lane already has clips to avoid overlap
+    const existingClipsInLane = clips.filter(c => c.instrument === instrumentType);
+    let startBar = 0;
+    
+    // If there are already clips in this lane, place the new one after the last clip
+    if (existingClipsInLane.length > 0) {
+      const lastClipEndBar = Math.max(...existingClipsInLane.map(c => c.startBar + c.bars));
+      startBar = lastClipEndBar;
     }
+    
+    /** @type {TimelineClip} */
+    const newClip = {
+      id: uid(),
+      patternId: pattern.id,
+      instrument: instrumentType,
+      startBar: startBar,
+      bars: clipBars,
+    };
+    
+    console.log(`[LoopArranger] Auto-placing ${pattern.name} in ${instrumentType} lane at bar ${startBar}`);
+    setClips(c => [...c, newClip]);
   };
   
   // Reference to the modal container

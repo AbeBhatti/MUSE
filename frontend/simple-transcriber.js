@@ -310,15 +310,31 @@ class SimpleTranscriber {
         
         if (track.notes && track.notes.length > 0) {
           let displayName = track.stem ? (track.stem.charAt(0).toUpperCase() + track.stem.slice(1)) : 'Track';
-          if (track.stem === 'original') displayName = 'Full Mix';
-          if (track.stem === 'other') displayName = 'Other/Synth';
+          let instrumentType = 'transcribed';
+
+          // Map stems to their corresponding instrument types
+          if (track.stem === 'drums') {
+            instrumentType = 'drums';
+          } else if (track.stem === 'bass') {
+            instrumentType = 'bass';
+          } else if (track.stem === 'other') {
+            displayName = 'Other/Synth';
+            instrumentType = 'synth';
+          } else if (track.stem === 'vocals') {
+            // Vocals typically go to piano track in this app's structure
+            instrumentType = 'piano';
+          } else if (track.stem === 'original') {
+            displayName = 'Full Mix';
+            instrumentType = 'transcribed';
+          }
 
           const uniqueId = uid();
           
           const pattern = {
             id: uniqueId,
             name: `${displayName}: ${this.file.name.substring(0, 15)}...`,
-            instrument: 'transcribed',
+            // Set the instrument type according to the stem type
+            instrument: instrumentType,
             data: {
               type: 'transcribed',
               notes: track.notes.map((n, i) => ({ 
@@ -334,7 +350,7 @@ class SimpleTranscriber {
             },
           };
 
-          console.log(`[SimpleTranscriber] Created pattern for ${displayName}:`, pattern.data.notes.length, 'notes');
+          console.log(`[SimpleTranscriber] Created pattern for ${displayName}:`, pattern.data.notes.length, 'notes', 'instrument:', instrumentType);
           patternsToSave.push(pattern);
         }
       });

@@ -100,9 +100,37 @@ def audio_to_midi(audio_path, output_path, instrument_name="unknown", max_durati
         }
 
 
-def separate_audio_demucs(input_audio, output_dir, max_duration=300):
+def fallback_save_audio(tensor, path, sample_rate):
+    """Fallback audio saving function using scipy when torchcodec is not available"""
+    try:
+        # Try using SciPy's WAV writer as fallback
+        print(f"[fallback_save_audio] Using scipy to save audio to {path}", file=sys.stderr)
+        import scipy.io.wavfile
+        audio = tensor.cpu().detach().numpy()
+        audio = audio.T  # [channels, samples] -> [samples, channels]
+        # Normalize to 16-bit range and convert to int16
+        audio = np.clip(audio * 32768, -32768, 32767).astype(np.int16)
+        scipy.io.wavfile.write(path, sample_rate, audio)
+        print(f"[fallback_save_audio] Successfully saved audio using scipy", file=sys.stderr)
+        return True
+    except Exception as e:
+        print(f"[fallback_save_audio] Error using scipy: {str(e)}", file=sys.stderr)
+        try:
+            # Try another fallback with soundfile if available
+            print(f"[fallback_save_audio] Trying soundfile as second fallback", file=sys.stderr)
+            import soundfile as sf
+            audio = tensor.cpu().detach().numpy()
+            sf.write(path, audio.T, sample_rate)
+            print(f"[fallback_save_audio] Successfully saved audio using soundfile", file=sys.stderr)
+            return True
+        except Exception as e2:
+            print(f"[fallback_save_audio] Error using soundfile: {str(e2)}", file=sys.stderr)
+            return False
+
+
+def separate_audio_demucs(input_file, output_dir, max_duration=300):
     """Separate audio into stems using Demucs"""
-    print(f"[separate_audio_demucs] Called with input: {input_audio}", file=sys.stderr)
+    print(f"[separate_audio_demucs] Called with input: {input_file}", file=sys.stderr)
     print(f"[separate_audio_demucs] Output dir: {output_dir}", file=sys.stderr)
     print(f"[separate_audio_demucs] Demucs available: {DEMUCS_AVAILABLE}", file=sys.stderr)
     
@@ -119,7 +147,7 @@ def separate_audio_demucs(input_audio, output_dir, max_duration=300):
         
         # Load audio with max duration limit
         print(f"[separate_audio_demucs] Loading audio file...", file=sys.stderr)
-        wav, sr = librosa.load(input_audio, sr=model.samplerate, mono=False, duration=max_duration)
+        wav, sr = librosa.load(input_file, sr=model.samplerate, mono=False, duration=max_duration)
         print(f"[separate_audio_demucs] Audio loaded. Shape: {wav.shape}, Sample rate: {sr}", file=sys.stderr)
         
         if wav.ndim == 1:
@@ -147,10 +175,20 @@ def separate_audio_demucs(input_audio, output_dir, max_duration=300):
         for i, stem_name in enumerate(stem_names):
             stem_path = output_path / f"{stem_name}.wav"
             print(f"[separate_audio_demucs] Saving stem {i+1}/{len(stem_names)}: {stem_name} to {stem_path}", file=sys.stderr)
-            # demucs.audio.save_audio expects samplerate as positional arg in many versions
-            save_audio(sources[0, i], str(stem_path), model.samplerate)
+            # Try torchcodec first, then use our fallback if it fails
+            try:
+                save_audio(sources[0, i], str(stem_path), model.samplerate)
+                print(f"[separate_audio_demucs] Saved {stem_name} with original save_audio", file=sys.stderr)
+            except Exception as e:
+                print(f"[separate_audio_demucs] Error with original save_audio: {str(e)}", file=sys.stderr)
+                # Use our fallback audio saving function
+                if fallback_save_audio(sources[0, i], str(stem_path), model.samplerate):
+                    print(f"[separate_audio_demucs] Saved {stem_name} with fallback", file=sys.stderr)
+                else:
+                    raise Exception(f"Failed to save {stem_name} with all available methods")
+            
             stems[stem_name] = str(stem_path)
-            print(f"[separate_audio_demucs] ✓ Saved {stem_name}", file=sys.stderr)
+            print(f"[separate_audio_demucs] Saved {stem_name}", file=sys.stderr)
         
         print(f"[separate_audio_demucs] All stems saved successfully! Total: {len(stems)}", file=sys.stderr)
         return stems
