@@ -498,6 +498,12 @@ io.use(async (socket, next) => {
 io.on('connection', (socket) => {
   console.log('✅ Client connected:', socket.id, '- User:', socket.userEmail);
 
+  // In-memory collaborative state per project (minimal starter)
+  // Structure: { bpm: number, version: number, updatedAt: ISOString }
+  // Note: In production, persist to DynamoDB and/or CRDT storage.
+  if (!global.__ROOM_STATES__) global.__ROOM_STATES__ = new Map();
+  const ROOM_STATES = global.__ROOM_STATES__;
+
   socket.on('join-room', async (roomName) => {
     // Verify user has access to this project
     const projectId = roomName.replace('beat-room-', '');
@@ -521,6 +527,21 @@ io.on('connection', (socket) => {
         userId: socket.userId,
         email: socket.userEmail
       });
+
+      // Initialize room state if missing
+      if (!ROOM_STATES.has(projectId)) {
+        ROOM_STATES.set(projectId, {
+          bpm: 120,
+          version: 0,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      // Send current state to the joining client
+      socket.emit('project-state', {
+        projectId,
+        state: ROOM_STATES.get(projectId)
+      });
     } catch (error) {
       console.error('Join room error:', error);
       socket.emit('error', { message: 'Failed to join room' });
@@ -530,6 +551,47 @@ io.on('connection', (socket) => {
   // Relay Y.js sync messages between clients
   socket.on('yjs-message', ({ room, message }) => {
     socket.to(room).emit('yjs-message', message);
+  });
+
+  // Presence updates (cursor, selection, tool, etc.)
+  socket.on('presence-update', ({ room, presence }) => {
+    // Attach server-side identity
+    socket.to(room).emit('presence-update', {
+      userId: socket.userId,
+      email: socket.userEmail,
+      presence,
+    });
+  });
+
+  // Minimal collaborative operations
+  // op = { type: 'set-bpm', payload: { bpm } }
+  socket.on('project-op', ({ room, op }) => {
+    try {
+      const projectId = room.replace('beat-room-', '');
+      const state = global.__ROOM_STATES__?.get(projectId);
+
+      if (!state) return; // ignore if room not initialized
+
+      if (op?.type === 'set-bpm') {
+        const bpm = Number(op?.payload?.bpm);
+        if (Number.isFinite(bpm) && bpm >= 40 && bpm <= 240) {
+          state.bpm = bpm;
+          state.version = (state.version || 0) + 1;
+          state.updatedAt = new Date().toISOString();
+
+          // Broadcast to other users in the room
+          socket.to(room).emit('project-op', {
+            projectId,
+            op: { type: 'set-bpm', payload: { bpm } },
+            version: state.version,
+            updatedAt: state.updatedAt,
+            user: { id: socket.userId, email: socket.userEmail }
+          });
+        }
+      }
+    } catch (e) {
+      console.error('project-op error:', e);
+    }
   });
 
   socket.on('disconnect', () => {

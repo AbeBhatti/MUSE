@@ -27,7 +27,7 @@ const PIANO_RECORDING_BARS = 4;
 const MAX_TRANSCRIPTION_BARS = 8; // Max bars for transcribed clip
 
 // ---------- Types ----------
-/** @typedef {"drums" | "bass" | "synth" | "piano" | "transcribed"} InstrumentId */
+/** @typedef {"drums" | "bass" | "synth" | "piano" | "transcribed" | "vocals"} InstrumentId */
 /** @typedef {"kick" | "snare" | "hat" | "clap"} DrumSound */
 
 /** @typedef {{type: "drums", grid: boolean[][]}} DrumPattern */ 
@@ -36,8 +36,9 @@ const MAX_TRANSCRIPTION_BARS = 8; // Max bars for transcribed clip
 /** @typedef {{id: string, note: number, start: number, duration: number}} MidiNote */
 /** @typedef {{type: "piano", notes: MidiNote[]}} PianoPattern */
 /** @typedef {{type: "transcribed", notes: MidiNote[], audioLengthBars: number, originalFileName: string}} TranscribedPattern */
+/** @typedef {{type: "vocals", audioBuffer: AudioBuffer, lengthBars: number, originalFileName: string}} VocalPattern */
 
-/** @typedef {DrumPattern | MelodyPattern | PianoPattern | TranscribedPattern} PatternData */
+/** @typedef {DrumPattern | MelodyPattern | PianoPattern | TranscribedPattern | VocalPattern} PatternData */
 
 /** @typedef {{id: string, name: string, instrument: InstrumentId, data: PatternData}} Pattern */
 
@@ -45,7 +46,7 @@ const MAX_TRANSCRIPTION_BARS = 8; // Max bars for transcribed clip
 
 /** @typedef {Omit<TimelineClip, 'id'>} ClipboardClip */
 
-/** @typedef {{ type: "library" } | { type: "sequencer", instrument: Exclude<InstrumentId, "transcribed"> } | { type: "transcribe" } | { type: "edit", patternId: string }} View */
+/** @typedef {{ type: "library" } | { type: "sequencer", instrument: Exclude<InstrumentId, "transcribed" | "vocals"> } | { type: "transcribe" } | { type: "record_vocals" } | { type: "edit", patternId: string }} View */
 
 // ---------- Audio Engine ----------
 
@@ -66,6 +67,7 @@ class AudioEngine {
   onStopRef;
   instrumentParamsRef;
   metronomeOnRef;
+  vocalsMap;
 
   /**
    * @param {React.MutableRefObject<Pattern[]>} patternsRef
@@ -84,6 +86,7 @@ class AudioEngine {
     this.onStopRef = onStopRef;
     this.instrumentParamsRef = instrumentParamsRef;
     this.metronomeOnRef = metronomeOnRef;
+    this.vocalsMap = new Map(); // Store vocal audio buffers
   }
 
   init() {
@@ -160,6 +163,37 @@ class AudioEngine {
 
     noise.connect(hpf).connect(gain).connect(panner).connect(this.ctx.destination);
     noise.start(time);
+  }
+
+  /**
+   * Play vocal audio from a pattern
+   * @param {string} patternId - The pattern ID containing the vocal audio
+   * @param {number} time - When to play the audio
+   * @param {number} offset - Offset in bars from clip start
+   */
+  playVocal(patternId, time, offset) {
+    if (!this.ctx) return;
+    const buffer = this.vocalsMap.get(patternId);
+    if (!buffer) return;
+
+    const params = this.instrumentParamsRef?.current?.vocals || { volume: 0.8, pan: 0 };
+
+    const source = this.ctx.createBufferSource();
+    const gain = this.ctx.createGain();
+    const panner = this.ctx.createStereoPanner();
+
+    source.buffer = buffer;
+    
+    // Calculate offset time in seconds
+    const offsetTime = (offset * BEATS_PER_BAR) * this.beatsToSec(1);
+    
+    gain.gain.setValueAtTime(params.volume || 0.8, time);
+    panner.pan.value = params.pan || 0;
+
+    source.connect(gain).connect(panner).connect(this.ctx.destination);
+    
+    // Start playing from the offset
+    source.start(time, Math.max(0, offsetTime));
   }
 
   playClap(time) {
@@ -470,6 +504,21 @@ class AudioEngine {
           }
         }
       }
+
+      // Handle Vocal patterns
+      if (patternData.type === "vocals") {
+        // Play vocal audio if we're at the start of the clip
+        if (currentBar === clip.startBar) {
+          const currentBeatInPattern = currentBeatInProject - clip.startBar * BEATS_PER_BAR;
+          // Only play at the start of the clip (beat 0)
+          if (Math.floor(currentBeatInPattern) === 0 && (currentBeatInPattern % 1) < (1 / STEPS_PER_BEAT)) {
+            // @ts-ignore
+            const lengthBars = patternData.lengthBars;
+            const offsetBars = 0; // Start from beginning
+            this.playVocal(clip.patternId, time, offsetBars);
+          }
+        }
+      }
     }
   }
 }
@@ -729,6 +778,194 @@ function AudioTranscriber({ onSave, onExit }) {
               Transcribing...
             </span>
           ) : 'Transcribe & Add'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Vocal Recorder Component ----------
+
+/**
+ * @param {{ onSave: (p: Pattern) => void, onExit: () => void, engine: AudioEngine }} props 
+ */
+function VocalRecorder({ onSave, onExit, engine }) {
+  const [file, setFile] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [recording, setRecording] = useState(false);
+  const [audioSrc, setAudioSrc] = useState(null);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+
+  const handleFileChange = (e) => {
+    const uploadedFile = e.target.files?.[0];
+    if (uploadedFile) {
+      if (!uploadedFile.type.startsWith('audio/')) {
+        setError("Please upload an audio file (e.g., MP3, WAV).");
+        setFile(null);
+        return;
+      }
+      setFile(uploadedFile);
+      setError(null);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      chunksRef.current = [];
+      
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+      
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        setAudioSrc(url);
+        
+        // Convert blob to File
+        const audioFile = new File([blob], 'recording.webm', { type: 'audio/webm' });
+        setFile(audioFile);
+        
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+      };
+      
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setRecording(true);
+      setError(null);
+    } catch (err) {
+      setError("Failed to access microphone. Please check permissions.");
+      console.error(err);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!file) {
+      setError("Please upload or record an audio file first.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Load audio file as buffer
+      const arrayBuffer = await file.arrayBuffer();
+      const audioBuffer = await engine.ctx.decodeAudioData(arrayBuffer);
+      
+      // Calculate length in bars
+      const durationSeconds = audioBuffer.duration;
+      const secondsPerBar = BEATS_PER_BAR * (60 / DEFAULT_BPM);
+      const lengthBars = Math.ceil(durationSeconds / secondsPerBar);
+      
+      // Store in vocals map
+      engine.vocalsMap.set(uid(), audioBuffer);
+
+      /** @type {Pattern} */
+      const newPattern = {
+        id: uid(),
+        name: `Vocal: ${file.name.substring(0, 20)}`,
+        instrument: "vocals",
+        // @ts-ignore
+        data: {
+          type: "vocals",
+          audioBuffer: audioBuffer,
+          lengthBars: lengthBars,
+          originalFileName: file.name,
+        },
+      };
+
+      // Store pattern ID in vocals map for playback
+      engine.vocalsMap.set(newPattern.id, audioBuffer);
+
+      onSave(newPattern);
+    } catch (e) {
+      console.error("Vocal processing failed:", e);
+      setError(e.message || "An error occurred while processing the audio.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 bg-zinc-800 rounded-xl shadow-2xl w-full max-w-lg text-white">
+      <h2 className="text-2xl font-bold mb-4 text-pink-400">🎤 Vocal Recording</h2>
+      <p className="mb-4 text-sm opacity-70">
+        Record your voice using the microphone or upload an audio file. The recording will be placed on the vocals lane.
+      </p>
+
+      {/* Recording Controls */}
+      <div className="mb-4 p-4 bg-zinc-700/50 rounded-lg">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={recording ? stopRecording : startRecording}
+            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              recording 
+                ? 'bg-red-500 hover:bg-red-600 animate-pulse' 
+                : 'bg-pink-500 hover:bg-pink-600'
+            }`}
+            disabled={isLoading}
+          >
+            {recording ? '⏹ Stop Recording' : '🎤 Start Recording'}
+          </button>
+          <div className="text-sm opacity-70">
+            {recording ? "Recording..." : audioSrc ? "Recording saved" : "Click to record"}
+          </div>
+        </div>
+        {audioSrc && (
+          <audio src={audioSrc} controls className="mt-3 w-full" />
+        )}
+      </div>
+
+      {/* File Upload */}
+      <div className="mb-4">
+        <label htmlFor="vocal-file" className="block text-sm font-medium mb-2">Or Upload Audio File:</label>
+        <input
+          id="vocal-file"
+          type="file"
+          accept="audio/*"
+          onChange={handleFileChange}
+          className="w-full text-sm text-zinc-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-zinc-700 file:text-pink-300 hover:file:bg-zinc-600"
+        />
+        {file && (
+          <p className="mt-2 text-pink-500 text-sm">Selected: {file.name}</p>
+        )}
+      </div>
+
+      {error && (
+        <div className="bg-red-900/50 border border-red-500 p-2 rounded text-sm mb-4">
+          {error}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-3">
+        <button 
+          onClick={onExit} 
+          className="px-4 py-2 bg-zinc-600 rounded-lg hover:bg-zinc-700 transition"
+          disabled={isLoading}
+        >
+          Cancel
+        </button>
+        <button 
+          onClick={handleSubmit} 
+          disabled={!file || isLoading}
+          className="px-4 py-2 bg-pink-500 text-white font-semibold rounded-lg hover:bg-pink-400 transition disabled:opacity-50"
+        >
+          {isLoading ? "Processing..." : "Add to Timeline"}
         </button>
       </div>
     </div>
@@ -1308,9 +1545,9 @@ function PianoSequencer({ onSave, onExit, engine, patterns, initialPattern }) {
 // --- Main App Components ---
 
 /**
- * @param {{ onSelectInstrument: (inst: InstrumentId) => void, patterns: Pattern[], onSelectTranscribe: () => void, instrumentParams: any, setInstrumentParams: any }} props
+ * @param {{ onSelectInstrument: (inst: InstrumentId) => void, patterns: Pattern[], onSelectTranscribe: () => void, onSelectRecordVocals: () => void, instrumentParams: any, setInstrumentParams: any }} props
  */
-function LibraryPanel({ onSelectInstrument, patterns, onSelectTranscribe, instrumentParams, setInstrumentParams }) {
+function LibraryPanel({ onSelectInstrument, patterns, onSelectTranscribe, onSelectRecordVocals, instrumentParams, setInstrumentParams }) {
   const [expandedInstrument, setExpandedInstrument] = useState(null);
 
   const instruments = [
@@ -1318,6 +1555,7 @@ function LibraryPanel({ onSelectInstrument, patterns, onSelectTranscribe, instru
     { id: "bass", name: "Bass", color: "bg-fuchsia-500" },
     { id: "synth", name: "Synth", color: "bg-cyan-500" },
     { id: "piano", name: "Piano", color: "bg-amber-500" },
+    { id: "vocals", name: "Vocals", color: "bg-pink-500" },
     { id: "transcribed", name: "Transcribed Audio", color: "bg-purple-500" },
   ];
 
@@ -1340,7 +1578,7 @@ function LibraryPanel({ onSelectInstrument, patterns, onSelectTranscribe, instru
     <div className="col-span-12 md:col-span-3 bg-zinc-900 p-4 rounded-lg">
       <h2 className="text-xl font-semibold mb-4">Library</h2>
       
-      {instruments.filter(i => i.id !== 'transcribed').map(inst => {
+      {instruments.filter(i => i.id !== 'transcribed' && i.id !== 'vocals').map(inst => {
         const isExpanded = expandedInstrument === inst.id;
         const params = instrumentParams[inst.id] || {};
 
@@ -1559,6 +1797,29 @@ function LibraryPanel({ onSelectInstrument, patterns, onSelectTranscribe, instru
             ))}
         </div>
       </div>
+
+      {/* Vocals Section */}
+      <div className="mb-4 border-t border-zinc-800 pt-4">
+        <h3 className="text-lg font-medium text-pink-400 mb-2">Vocals</h3>
+        <button
+          onClick={onSelectRecordVocals}
+          className="w-full px-4 py-3 rounded-lg font-medium text-left bg-pink-500 text-white shadow-lg hover:bg-pink-600 transition-all mb-3"
+        >
+          🎤 Record or Upload Vocals
+        </button>
+        <div className="mt-2 space-y-1">
+            {patterns.filter(p => p.instrument === 'vocals').map(p => (
+                <div
+                key={p.id}
+                draggable
+                onDragStart={(e) => onDragStart(e, p)}
+                className={`w-full px-3 py-2 rounded bg-zinc-800 border border-pink-700 cursor-grab active:cursor-grabbing text-sm hover:bg-zinc-700 text-pink-200`}
+              >
+                {p.name}
+              </div>
+            ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1596,7 +1857,7 @@ function TimelinePanel({
   onEditClip
 }) {
   /** @type {InstrumentId[]} */
-  const lanes = ["drums", "bass", "synth", "piano", "transcribed"];
+  const lanes = ["drums", "bass", "synth", "piano", "vocals", "transcribed"];
   const timelineRef = useRef(null);
   const [dragError, setDragError] = useState(null);
   const [resizingClipId, setResizingClipId] = useState(null);
@@ -1649,6 +1910,9 @@ function TimelinePanel({
     } else if (pattern.instrument === 'transcribed') {
         // @ts-ignore
         clipBars = pattern.data.audioLengthBars;
+    } else if (pattern.instrument === 'vocals') {
+        // @ts-ignore
+        clipBars = pattern.data.lengthBars;
     }
 
     /** @type {TimelineClip} */
@@ -1796,6 +2060,7 @@ function TimelinePanel({
             if (lane === 'bass') colorClass = 'bg-fuchsia-600/80';
             if (lane === 'synth') colorClass = 'bg-cyan-600/80';
             if (lane === 'piano') colorClass = 'bg-amber-600/80';
+            if (lane === 'vocals') colorClass = 'bg-pink-600/80';
             if (lane === 'transcribed') colorClass = 'bg-purple-600/80';
             
             return (
@@ -1826,6 +2091,7 @@ function TimelinePanel({
                             clip.instrument === 'bass' ? 'bg-fuchsia-600/80' : 
                             clip.instrument === 'synth' ? 'bg-cyan-600/80' : 
                             clip.instrument === 'piano' ? 'bg-amber-600/80' : 
+                            clip.instrument === 'vocals' ? 'bg-pink-600/80' : 
                             clip.instrument === 'transcribed' ? 'bg-purple-600/80' : 'bg-zinc-600'
                         } ${
                         isSelected ? 'ring-2 ring-lime-400 z-20' : 'border border-zinc-600 z-10'
@@ -1873,6 +2139,7 @@ function TimelinePanel({
 
 function LoopArranger() {
   const [bpm, setBpm] = useState(DEFAULT_BPM);
+  const [collabStatus, setCollabStatus] = useState('disconnected');
   const [numBars, setNumBars] = useState(NUM_BARS_DEFAULT);
   const [isLooping, setIsLooping] = useState(true);
   const [metronomeOn, setMetronomeOn] = useState(false);
@@ -1896,6 +2163,7 @@ function LoopArranger() {
     bass: { volume: 0.8, pan: 0, pitch: 0, filterType: 'lowpass', filterCutoff: 800, filterResonance: 1, attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4 },
     synth: { volume: 0.8, pan: 0, pitch: 0, filterType: 'lowpass', filterCutoff: 1200, filterResonance: 1, attack: 0.05, decay: 0.1, sustain: 0.5, release: 0.3 },
     piano: { volume: 0.8, pan: 0, pitch: 0, filterType: 'none', filterCutoff: 2000, filterResonance: 1, attack: 0.01, decay: 0.15, sustain: 0.4, release: 0.5 },
+    vocals: { volume: 0.8, pan: 0 },
     transcribed: { volume: 0.8, pan: 0, pitch: 0, filterType: 'none', filterCutoff: 1500, filterResonance: 1, attack: 0.02, decay: 0.1, sustain: 0.6, release: 0.3 }
   });
 
@@ -1941,6 +2209,31 @@ function LoopArranger() {
   useEffect(() => {
     engine.setBpm(bpm);
   }, [engine, bpm]);
+
+  // Collaboration bootstrap + listeners
+  useEffect(() => {
+    const projectId = localStorage.getItem('currentProjectId') || 'demo';
+    try { window.Collab?.init(projectId); } catch {}
+
+    const offBpm = window.Collab?.on('bpm', (remoteBpm) => {
+      if (typeof remoteBpm === 'number' && !Number.isNaN(remoteBpm)) {
+        setBpm(prev => (prev === remoteBpm ? prev : remoteBpm));
+      }
+    });
+    const offStatus = window.Collab?.on('status', (s) => setCollabStatus(s?.status || 'disconnected'));
+
+    // Push a minimal presence snapshot
+    const email = localStorage.getItem('email');
+    try {
+      window.Collab?.updatePresence({ user: { email: email || 'anonymous' }, playing, bpm });
+    } catch {}
+
+    return () => {
+      try { offBpm?.(); offStatus?.(); } catch {}
+      try { window.Collab?.destroy(); } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   const animatePlayhead = useCallback(() => {
     if (!engine.playing || !engine.ctx) {
@@ -1988,6 +2281,7 @@ function LoopArranger() {
   const handleBpmChange = (newBpm) => {
     const clamped = clamp(newBpm, 40, 240);
     setBpm(clamped);
+    try { window.Collab?.setBpm(clamped); } catch {}
   };
 
   // --- Clip Editing Handlers ---
@@ -2096,6 +2390,21 @@ function LoopArranger() {
           };
           setClips(c => [...c, newClip]);
       }
+
+      // Auto-place vocal clip on timeline at bar 0
+      if (pattern.instrument === 'vocals') {
+          // @ts-ignore
+          const clipBars = pattern.data.lengthBars;
+          /** @type {TimelineClip} */
+          const newClip = {
+              id: uid(),
+              patternId: pattern.id,
+              instrument: 'vocals',
+              startBar: 0,
+              bars: clipBars,
+          };
+          setClips(c => [...c, newClip]);
+      }
     }
     
     setView({ type: "library" });
@@ -2107,6 +2416,8 @@ function LoopArranger() {
     let component;
     if (view.type === "transcribe") {
         component = <AudioTranscriber onSave={onSavePattern} onExit={() => setView({type: 'library'})} />;
+    } else if (view.type === "record_vocals") {
+        component = <VocalRecorder onSave={onSavePattern} onExit={() => setView({type: 'library'})} engine={engine} />;
     } else if (view.type === "edit") {
       // Edit mode - find the pattern and open appropriate sequencer
       const patternToEdit = patterns.find(p => p.id === view.patternId);
@@ -2221,6 +2532,11 @@ function LoopArranger() {
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-lime-500"
               />
             </div>
+            {/* Collab status */}
+            <span className={`ml-4 inline-flex items-center gap-2 px-2 py-1 rounded text-xs ${collabStatus === 'connected' ? 'bg-emerald-600/20 text-emerald-300' : 'bg-zinc-700 text-zinc-300'}`}>
+              <span style={{ width: 8, height: 8, borderRadius: '9999px', background: collabStatus === 'connected' ? '#22c55e' : '#71717a' }} />
+              {collabStatus === 'connected' ? 'Live' : 'Offline'}
+            </span>
           </div>
         </div>
         
@@ -2230,6 +2546,7 @@ function LoopArranger() {
             // @ts-ignore
             onSelectInstrument={(inst) => setView({ type: "sequencer", instrument: inst })}
             onSelectTranscribe={() => setView({ type: "transcribe" })}
+            onSelectRecordVocals={() => setView({ type: "record_vocals" })}
             patterns={patterns}
             instrumentParams={instrumentParams}
             setInstrumentParams={setInstrumentParams}
