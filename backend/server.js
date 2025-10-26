@@ -9,6 +9,8 @@ const { CognitoIdentityProviderClient, InitiateAuthCommand, SignUpCommand, Confi
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const { v4: uuidv4 } = require('uuid');
+const { createAdapter } = require('@socket.io/redis-adapter');
+const { createClient } = require('redis');
 
 // Initialize Express app
 const app = express();
@@ -76,6 +78,7 @@ function getKey(header, callback) {
 // Helper: Calculate SECRET_HASH for Cognito
 const crypto = require('crypto');
 function calculateSecretHash(username) {
+  if (!COGNITO_CLIENT_SECRET) return undefined;
   return crypto
     .createHmac('SHA256', COGNITO_CLIENT_SECRET)
     .update(username + COGNITO_CLIENT_ID)
@@ -110,17 +113,21 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 
   try {
-    const secretHash = calculateSecretHash(email);
-
-    const command = new SignUpCommand({
+    const params = {
       ClientId: COGNITO_CLIENT_ID,
       Username: email,
       Password: password,
-      SecretHash: secretHash,
       UserAttributes: [
         { Name: 'email', Value: email }
       ]
-    });
+    };
+
+    const secretHash = calculateSecretHash(email);
+    if (secretHash) {
+      params.SecretHash = secretHash;
+    }
+
+    const command = new SignUpCommand(params);
 
     const response = await cognitoClient.send(command);
 
@@ -144,7 +151,10 @@ app.post('/api/auth/signup', async (req, res) => {
     });
   } catch (error) {
     console.error('Signup error:', error);
-    res.status(400).json({ message: error.message || 'Signup failed' });
+    res.status(400).json({
+      message: error.message || 'Signup failed',
+      code: error.name || error.code || 'SignupError'
+    });
   }
 });
 
@@ -157,17 +167,21 @@ app.post('/api/auth/signin', async (req, res) => {
   }
 
   try {
-    const secretHash = calculateSecretHash(email);
-
-    const command = new InitiateAuthCommand({
+    const authParams = {
       AuthFlow: 'USER_PASSWORD_AUTH',
       ClientId: COGNITO_CLIENT_ID,
       AuthParameters: {
         USERNAME: email,
-        PASSWORD: password,
-        SECRET_HASH: secretHash
+        PASSWORD: password
       }
-    });
+    };
+
+    const secretHash = calculateSecretHash(email);
+    if (secretHash) {
+      authParams.AuthParameters.SECRET_HASH = secretHash;
+    }
+
+    const command = new InitiateAuthCommand(authParams);
 
     const response = await cognitoClient.send(command);
 
@@ -194,8 +208,18 @@ app.post('/api/auth/signin', async (req, res) => {
     });
   } catch (error) {
     console.error('Signin error:', error);
-    res.status(401).json({ message: error.message || 'Sign in failed' });
+    res.status(401).json({
+      message: error.message || 'Sign in failed',
+      code: error.name || error.code || 'SignInError'
+    });
   }
+});
+
+// ==================== Health Check Endpoint ====================
+
+// Health check endpoint for ECS
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
 // ==================== MIDI Transcription Endpoints ====================
@@ -210,19 +234,25 @@ app.post('/api/auth/request-password-reset', async (req, res) => {
   }
 
   try {
-    const secretHash = calculateSecretHash(email);
-
-    const command = new ForgotPasswordCommand({
+    const params = {
       ClientId: COGNITO_CLIENT_ID,
-      Username: email,
-      SecretHash: secretHash
-    });
+      Username: email
+    };
+    const secretHash = calculateSecretHash(email);
+    if (secretHash) {
+      params.SecretHash = secretHash;
+    }
+
+    const command = new ForgotPasswordCommand(params);
 
     await cognitoClient.send(command);
     res.json({ message: 'Password reset code sent to your email' });
   } catch (error) {
     console.error('Password reset request error:', error);
-    res.status(400).json({ message: error.message || 'Password reset request failed' });
+    res.status(400).json({
+      message: error.message || 'Password reset request failed',
+      code: error.name || error.code || 'ForgotPasswordError'
+    });
   }
 });
 
@@ -235,21 +265,28 @@ app.post('/api/auth/reset-password', async (req, res) => {
   }
 
   try {
-    const secretHash = calculateSecretHash(email);
-
-    const command = new ConfirmForgotPasswordCommand({
+    const params = {
       ClientId: COGNITO_CLIENT_ID,
       Username: email,
       ConfirmationCode: code,
-      Password: password,
-      SecretHash: secretHash
-    });
+      Password: password
+    };
+
+    const secretHash = calculateSecretHash(email);
+    if (secretHash) {
+      params.SecretHash = secretHash;
+    }
+
+    const command = new ConfirmForgotPasswordCommand(params);
 
     await cognitoClient.send(command);
     res.json({ message: 'Password reset successfully' });
   } catch (error) {
     console.error('Password reset error:', error);
-    res.status(400).json({ message: error.message || 'Password reset failed' });
+    res.status(400).json({
+      message: error.message || 'Password reset failed',
+      code: error.name || error.code || 'ResetPasswordError'
+    });
   }
 });
 
@@ -262,19 +299,26 @@ app.post('/api/auth/request-email-code', async (req, res) => {
   }
 
   try {
-    const secretHash = calculateSecretHash(email);
-
-    const command = new ResendConfirmationCodeCommand({
+    const params = {
       ClientId: COGNITO_CLIENT_ID,
-      Username: email,
-      SecretHash: secretHash
-    });
+      Username: email
+    };
+
+    const secretHash = calculateSecretHash(email);
+    if (secretHash) {
+      params.SecretHash = secretHash;
+    }
+
+    const command = new ResendConfirmationCodeCommand(params);
 
     await cognitoClient.send(command);
     res.json({ message: 'Verification code sent to your email' });
   } catch (error) {
     console.error('Resend code error:', error);
-    res.status(400).json({ message: error.message || 'Failed to send verification code' });
+    res.status(400).json({
+      message: error.message || 'Failed to send verification code',
+      code: error.name || error.code || 'ResendEmailCodeError'
+    });
   }
 });
 
@@ -287,20 +331,27 @@ app.post('/api/auth/verify-email-code', async (req, res) => {
   }
 
   try {
-    const secretHash = calculateSecretHash(email);
-
-    const command = new ConfirmSignUpCommand({
+    const params = {
       ClientId: COGNITO_CLIENT_ID,
       Username: email,
-      ConfirmationCode: code,
-      SecretHash: secretHash
-    });
+      ConfirmationCode: code
+    };
+
+    const secretHash = calculateSecretHash(email);
+    if (secretHash) {
+      params.SecretHash = secretHash;
+    }
+
+    const command = new ConfirmSignUpCommand(params);
 
     await cognitoClient.send(command);
     res.json({ message: 'Email verified successfully' });
   } catch (error) {
     console.error('Email verification error:', error);
-    res.status(400).json({ message: error.message || 'Email verification failed' });
+    res.status(400).json({
+      message: error.message || 'Email verification failed',
+      code: error.name || error.code || 'VerifyEmailCodeError'
+    });
   }
 });
 
@@ -476,6 +527,19 @@ const io = new Server(server, {
     methods: ['GET', 'POST']
   }
 });
+
+// Setup Redis adapter for Socket.io scaling (production only)
+if (process.env.REDIS_HOST) {
+  const pubClient = createClient({ url: `redis://${process.env.REDIS_HOST}:6379` });
+  const subClient = pubClient.duplicate();
+
+  Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
+    io.adapter(createAdapter(pubClient, subClient));
+    console.log('✅ Redis adapter connected for Socket.io scaling');
+  }).catch((error) => {
+    console.error('❌ Redis adapter connection failed:', error);
+  });
+}
 
 // WebSocket authentication middleware
 io.use(async (socket, next) => {

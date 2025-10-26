@@ -25,6 +25,10 @@ const NUM_BARS_DEFAULT = 16; // Default timeline length
 const PIXELS_PER_BAR = 128; // Timeline horizontal scale
 const PIANO_RECORDING_BARS = 4;
 const MAX_TRANSCRIPTION_BARS = 8; // Max bars for transcribed clip
+const API_BASE =
+  ['localhost', '127.0.0.1'].includes(window.location.hostname)
+    ? 'http://localhost:1234'
+    : '';
 
 // ---------- Types ----------
 /** @typedef {"drums" | "bass" | "synth" | "piano" | "transcribed" | "vocals"} InstrumentId */
@@ -613,7 +617,7 @@ function AudioTranscriber({ onSave, onExit }) {
     formData.append('min_note_len', '0.127');
     formData.append('melodia_trick', 'true');
 
-    const response = await fetch('http://localhost:1234/upload', {
+    const response = await fetch(`${API_BASE}/upload`, {
       method: 'POST',
       body: formData
     });

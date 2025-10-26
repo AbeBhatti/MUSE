@@ -9,12 +9,15 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style> body { font-family: 'Inter', sans-serif; } </style>
+  <script src="config.js"></script>
   <script>
-    const BACKEND_URL = 'http://localhost:1234';
+    const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    const BACKEND_URL = window.BACKEND_URL || (isLocal ? 'http://localhost:1234' : '');
     window.AUTH_API = {
       requestPassword: `${BACKEND_URL}/api/auth/request-password-reset`,
       resetPassword: `${BACKEND_URL}/api/auth/reset-password`,
     };
+    console.log('Backend URL configured:', BACKEND_URL);
   </script>
 </head>
 <body class="bg-gray-900">
@@ -109,4 +112,3 @@
   </script>
 </body>
 </html>
-

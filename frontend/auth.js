@@ -18,7 +18,9 @@ async function post(url, body) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data.message || data.error || 'Request failed');
+    const err = new Error(data.message || data.error || 'Request failed');
+    if (data.code) err.code = data.code;
+    throw err;
   }
   return data;
 }
@@ -50,6 +52,24 @@ signinForm?.addEventListener('submit', async (e) => {
     // Redirect to home/editor after login
     setTimeout(() => (window.location.href = 'index.html'), 600);
   } catch (err) {
+    if (err.code === 'UserNotConfirmedException' || /not\s+confirmed/i.test(err.message || '')) {
+      setMsg('signin-msg', 'Please verify your email before signing in.', false);
+      sessionStorage.setItem('pendingVerificationEmail', email);
+      const verEmailInput = document.getElementById('ver-email');
+      if (verEmailInput) {
+        verEmailInput.value = email;
+        verEmailInput.readOnly = true;
+      }
+      show('signup-section', false);
+      show('signin-section', false);
+      show('email-ver-section', true);
+      const emailVerSection = document.getElementById('email-ver-section');
+      if (emailVerSection) {
+        emailVerSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => document.getElementById('ver-email-code')?.focus(), 400);
+      }
+      return;
+    }
     setMsg('signin-msg', err.message || 'Sign in failed');
   }
 });
@@ -63,7 +83,33 @@ signupForm?.addEventListener('submit', async (e) => {
   const password = document.getElementById('signup-password').value;
   try {
     const resp = await post(api.signup, { email, password });
-    setMsg('signup-msg', 'Account created! Please verify email/phone.', true);
+    setMsg('signup-msg', 'Account created! Check your email for the verification code.', true);
+
+    // Store email for verification
+    sessionStorage.setItem('pendingVerificationEmail', email);
+
+    // Auto-populate verification email field
+    const verEmailInput = document.getElementById('ver-email');
+    if (verEmailInput) {
+      verEmailInput.value = email;
+      verEmailInput.readOnly = true; // Prevent changing it
+    }
+
+    // Hide signup/signin sections and show verification
+    show('signup-section', false);
+    show('signin-section', false);
+    show('email-ver-section', true);
+
+    // Scroll to email verification section
+    const emailVerSection = document.getElementById('email-ver-section');
+    if (emailVerSection) {
+      emailVerSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Focus on the verification code input
+      setTimeout(() => {
+        const codeInput = document.getElementById('ver-email-code');
+        if (codeInput) codeInput.focus();
+      }, 500);
+    }
   } catch (err) {
     setMsg('signup-msg', err.message || 'Sign up failed');
   }
@@ -148,7 +194,35 @@ document.getElementById('email-verify-form')?.addEventListener('submit', async (
   const code = document.getElementById('ver-email-code').value.trim();
   try {
     await post(api.verifyEmailCode, { email, code });
-    setMsg('email-verify-msg', 'Email verified!', true);
+    setMsg('email-verify-msg', 'Email verified! Redirecting to sign in...', true);
+
+    // Clear stored signup email
+    sessionStorage.removeItem('signupEmail');
+
+    // Redirect to sign in after successful verification
+    setTimeout(() => {
+      // Show signin/signup sections again
+      show('signup-section', true);
+      show('signin-section', true);
+
+      // Pre-populate signin email
+      const signinEmailInput = document.getElementById('signin-email');
+      if (signinEmailInput) {
+        signinEmailInput.value = email;
+      }
+
+      // Scroll to signin
+      const signinSection = document.getElementById('signin-section');
+      if (signinSection) {
+        signinSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      // Focus on password field
+      setTimeout(() => {
+        const passwordInput = document.getElementById('signin-password');
+        if (passwordInput) passwordInput.focus();
+      }, 500);
+    }, 1500);
   } catch (err) {
     setMsg('email-verify-msg', err.message || 'Verification failed');
   }

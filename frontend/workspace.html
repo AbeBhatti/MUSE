@@ -8,6 +8,14 @@
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    (function enforceAuth() {
+      if (!localStorage.getItem('idToken')) {
+        const loginPage = 'login.html';
+        window.location.replace(`${loginPage}${window.location.search}${window.location.hash}`);
+      }
+    })();
+  </script>
 
   <!-- React and ReactDOM from CDN (UMD builds) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>

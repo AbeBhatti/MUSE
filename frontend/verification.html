@@ -33,6 +33,7 @@
           -moz-appearance: textfield;
         }
     </style>
+    <script src="config.js"></script>
 </head>
 <body class="bg-gray-900">
 
@@ -67,6 +68,8 @@
 
             <!-- Code Verification Form -->
             <form class="space-y-5 pt-8" action="#" method="POST" onsubmit="return false;">
+                <!-- Message Display -->
+                <div id="message" class="hidden rounded-md p-3 text-sm"></div>
                 
                 <!-- 6-Digit Code Inputs -->
                 <div>
@@ -114,6 +117,119 @@
 
         </div>
     </div>
+
+    <script>
+        // Backend API configuration
+        const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+        const BACKEND_URL = window.BACKEND_URL || (isLocal ? 'http://localhost:1234' : '');
+        window.AUTH_API = {
+            verify: `${BACKEND_URL}/api/auth/verify-email-code`,
+            resend: `${BACKEND_URL}/api/auth/request-email-code`
+        };
+        console.log('Backend URL configured:', BACKEND_URL);
+
+        let userEmail = '';
+
+        // Helper function to display messages
+        function showMessage(text, isError = false) {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = text;
+            messageEl.className = `rounded-md p-3 text-sm ${isError ? 'bg-red-900/50 text-red-200 border border-red-700' : 'bg-green-900/50 text-green-200 border border-green-700'}`;
+            messageEl.classList.remove('hidden');
+        }
+
+        // Helper function to make API requests
+        async function apiRequest(url, data) {
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data),
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.message || 'Request failed');
+                }
+
+                return result;
+            } catch (error) {
+                throw new Error(error.message || 'Network error');
+            }
+        }
+
+        // Handle form submission
+        document.querySelector('form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const code = Array.from(document.querySelectorAll('.code-input')).map(input => input.value).join('');
+
+            if (code.length !== 6) {
+                showMessage('Please enter the complete 6-digit code.', true);
+                return;
+            }
+
+            if (!userEmail) {
+                showMessage('Email address not found. Please return to the sign-up page.', true);
+                return;
+            }
+
+            try {
+                showMessage('Verifying your code...', false);
+
+                await apiRequest(window.AUTH_API.verify, {
+                    email: userEmail,
+                    code: code
+                });
+
+                showMessage('Verification successful! Redirecting to login...', false);
+                sessionStorage.removeItem('pendingVerificationEmail');
+
+                setTimeout(() => {
+                    window.location.href = 'login.html';
+                }, 2000);
+
+            } catch (error) {
+                showMessage(error.message || 'Verification failed. Please check your code and try again.', true);
+            }
+        });
+
+        // Handle "Resend" link
+        document.querySelector('a[href="#"]').addEventListener('click', async (e) => {
+            e.preventDefault();
+            if (!userEmail) {
+                showMessage('Email address not found. Cannot resend code.', true);
+                return;
+            }
+            try {
+                showMessage('Resending verification code...', false);
+                await apiRequest(window.AUTH_API.resend, { email: userEmail });
+                showMessage('A new verification code has been sent to your email.', false);
+            } catch (error) {
+                showMessage(error.message || 'Failed to resend code.', true);
+            }
+        });
+
+        // Get email from URL on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            let email = urlParams.get('email');
+            if (!email) {
+                email = sessionStorage.getItem('pendingVerificationEmail') || '';
+            }
+            console.log('Verification page loaded, email resolved to:', email);
+            if (email) {
+                userEmail = email;
+                sessionStorage.setItem('pendingVerificationEmail', email);
+            } else {
+                console.error('No email available for verification');
+                showMessage('Could not find email in URL. Please sign up again.', true);
+            }
+        });
+    </script>
 
     <script>
         const codeInputs = document.querySelectorAll('.code-input');

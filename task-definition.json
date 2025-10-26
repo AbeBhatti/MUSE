@@ -1,0 +1,43 @@
+{
+  "family": "vybe-backend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::707071241239:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::707071241239:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "vybe-backend",
+      "image": "707071241239.dkr.ecr.us-east-1.amazonaws.com/vybe-backend:latest",
+      "portMappings": [
+        {
+          "containerPort": 1234,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {"name": "NODE_ENV", "value": "production"},
+        {"name": "PORT", "value": "1234"},
+        {"name": "AWS_REGION", "value": "us-east-1"},
+        {"name": "COGNITO_USER_POOL_ID", "value": "us-east-1_EWLQNHfPY"},
+        {"name": "COGNITO_CLIENT_ID", "value": "42p4i1prmhnvglhsrsevh8veg3"},
+        {"name": "COGNITO_CLIENT_SECRET", "value": "2d9snoqn0aq84f4m3n2gc4pf759im2cgqjd3mbb0nt37d76v5l8"},
+        {"name": "DYNAMODB_USERS_TABLE", "value": "vybe-users"},
+        {"name": "DYNAMODB_PROJECTS_TABLE", "value": "vybe-projects"},
+        {"name": "DYNAMODB_COLLABORATORS_TABLE", "value": "vybe-project-collaborators"},
+        {"name": "DYNAMODB_BEATS_TABLE", "value": "vybe-beats"},
+        {"name": "FRONTEND_URL", "value": "https://d1dut83snnf5pc.cloudfront.net"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/vybe-backend",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
+

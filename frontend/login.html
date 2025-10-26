@@ -16,14 +16,17 @@
             font-family: 'Inter', sans-serif;
         }
     </style>
+    <script src="config.js"></script>
     <script>
         // Backend API configuration
-        const BACKEND_URL = 'http://localhost:1234';
+        const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+        const BACKEND_URL = window.BACKEND_URL || (isLocal ? 'http://localhost:1234' : '');
         window.AUTH_API = {
             signin: `${BACKEND_URL}/api/auth/signin`,
             signup: `${BACKEND_URL}/api/auth/signup`,
             requestPassword: `${BACKEND_URL}/api/auth/request-password-reset`,
         };
+        console.log('Backend URL configured:', BACKEND_URL);
     </script>
 </head>
 <body class="bg-gray-900">
@@ -107,25 +110,33 @@
 
         // Helper function to make API requests
         async function apiRequest(url, data) {
+            let response;
             try {
-                const response = await fetch(url, {
+                response = await fetch(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify(data),
                 });
-
-                const result = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(result.message || 'Request failed');
-                }
-
-                return result;
-            } catch (error) {
-                throw new Error(error.message || 'Network error');
+            } catch (networkError) {
+                throw new Error(networkError.message || 'Network error');
             }
+
+            let result = null;
+            try {
+                result = await response.json();
+            } catch {
+                // ignore JSON parse errors
+            }
+
+            if (!response.ok) {
+                const err = new Error(result?.message || 'Request failed');
+                if (result?.code) err.code = result.code;
+                throw err;
+            }
+
+            return result || {};
         }
 
         // Handle login form submission
@@ -159,6 +170,15 @@
                     window.location.href = 'index.html';
                 }, 1000);
             } catch (error) {
+                if (error.code === 'UserNotConfirmedException' || /not\s+confirmed/i.test(error.message || '')) {
+                    showMessage('Please verify your email before signing in. Redirecting to verification...', false);
+                    sessionStorage.setItem('pendingVerificationEmail', email);
+                    setTimeout(() => {
+                        window.location.href = `verification.html?email=${encodeURIComponent(email)}`;
+                    }, 1200);
+                    return;
+                }
+
                 showMessage(error.message || 'Sign in failed. Please check your credentials.', true);
             }
         });
@@ -174,7 +194,5 @@
 
 </body>
 </html>
-
-
 
 

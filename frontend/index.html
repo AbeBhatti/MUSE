@@ -25,6 +25,18 @@
       }
     }
   </script>
+  <script>
+    (function redirectIfUnauthenticated() {
+      const hasToken = Boolean(localStorage.getItem('idToken'));
+      if (!hasToken) {
+        const loginPage = 'login.html';
+        const path = window.location.pathname || '';
+        if (!path.endsWith(`/${loginPage}`) && !path.endsWith(loginPage)) {
+          window.location.replace(`${loginPage}${window.location.search}${window.location.hash}`);
+        }
+      }
+    })();
+  </script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
     .doc-preview {

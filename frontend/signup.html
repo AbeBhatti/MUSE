@@ -32,12 +32,16 @@
             padding-right: 2.5rem;
         }
     </style>
+    <script src="config.js"></script>
     <script>
         // Backend API configuration
-        const BACKEND_URL = 'http://localhost:1234';
+        const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+        // For AWS deployment, get backend URL from config.js or environment
+        const BACKEND_URL = window.BACKEND_URL || (isLocal ? 'http://localhost:1234' : '');
         window.AUTH_API = {
             signup: `${BACKEND_URL}/api/auth/signup`,
         };
+        console.log('Backend URL configured:', BACKEND_URL);
     </script>
 </head>
 <body class="bg-gray-900">
@@ -246,14 +250,17 @@
 
                 showMessage('Account created successfully! Please check your email to verify your account.', false);
 
+                // Store email for verification flow
+                sessionStorage.setItem('pendingVerificationEmail', email);
+
                 // Clear form
                 document.getElementById('signup-form').reset();
 
-                // Redirect to login page after 3 seconds
-                setTimeout(() => {
-                    window.location.href = 'login.html';
-                }, 3000);
+                // Redirect to verification page immediately (don't wait 3 seconds)
+                console.log('Redirecting to verification page with email:', email);
+                window.location.href = `verification.html?email=${encodeURIComponent(email)}`;
             } catch (error) {
+                console.error('Signup error:', error);
                 showMessage(error.message || 'Sign up failed. Please try again.', true);
             }
         });

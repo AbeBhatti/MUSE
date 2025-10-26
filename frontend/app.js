@@ -44,11 +44,16 @@ const instruments = [kick, snare, hihat, clap];
 // ==========================================
 
 const ydoc = new Y.Doc();
-const provider = new WebsocketProvider(
-  'ws://localhost:1234',
-  'beat-room-main',
-  ydoc
-);
+const websocketEndpoint = (() => {
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return 'ws://localhost:1234';
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}`;
+})();
+
+const provider = new WebsocketProvider(websocketEndpoint, 'beat-room-main', ydoc);
 
 // Shared beat grid state (4 instruments x 16 steps)
 const yBeats = ydoc.getArray('beats');
