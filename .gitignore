@@ -6,6 +6,11 @@
 # Dependencies
 node_modules/
 
+# Audio/MIDI temp and outputs
+audio-midi/output/
+audio-midi/temp_output/
+audio-midi/temp_uploads/
+
 
 # OS files
 .DS_Store
