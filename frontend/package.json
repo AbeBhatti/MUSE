@@ -11,6 +11,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@tonejs/midi": "^2.0.28",
     "socket.io-client": "^4.8.1",
     "tone": "^15.1.22",
     "y-websocket": "^3.0.0",

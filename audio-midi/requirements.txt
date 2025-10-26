@@ -1,0 +1,32 @@
+# Audio-to-MIDI transcription requirements
+# Main package for audio transcription
+basic-pitch==0.4.0
+
+# Core dependencies (installed automatically with basic-pitch)
+librosa>=0.8.0
+numpy>=1.18
+scipy>=1.4.1
+scikit-learn>=0.17,<1.6.0
+pretty-midi>=0.2.9
+mir-eval>=0.6
+resampy>=0.2.2,<0.4.3
+typing-extensions>=4.0.0
+coremltools>=8.0.0
+
+# Audio processing dependencies
+soundfile>=0.12.1
+audioread>=2.1.9
+soxr>=0.3.2
+
+# MIDI processing
+mido>=1.1.16
+
+# Web server dependencies for MIDI editor
+flask>=3.0.0
+flask-cors>=6.0.0
+
+# Optional dependencies for enhanced functionality
+# Uncomment the following lines if you need additional model support:
+# tensorflow>=2.0.0  # For TensorFlow models
+# onnxruntime>=1.0.0  # For ONNX models
+# tflite-runtime>=2.0.0  # For TFLite models
