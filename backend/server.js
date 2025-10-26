@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 const { CognitoIdentityProviderClient, InitiateAuthCommand, SignUpCommand, ConfirmSignUpCommand, ForgotPasswordCommand, ConfirmForgotPasswordCommand, ResendConfirmationCodeCommand } = require('@aws-sdk/client-cognito-identity-provider');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, UpdateCommand, ScanCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 const { v4: uuidv4 } = require('uuid');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const { createClient } = require('redis');
@@ -20,10 +20,21 @@ const fs = require('fs');
 // Serve static files: prefer built assets if available
 const distDir = path.join(__dirname, '..', 'frontend', 'dist');
 const publicDir = path.join(__dirname, '..', 'frontend');
+const staticOptions = {
+  setHeaders(res, filePath) {
+    const ext = path.extname(filePath);
+    if (['.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx'].includes(ext)) {
+      res.type('application/javascript');
+    }
+    if (ext === '.json') {
+      res.type('application/json');
+    }
+  }
+};
 if (fs.existsSync(distDir)) {
-  app.use(express.static(distDir));
+  app.use(express.static(distDir, staticOptions));
 } else {
-  app.use(express.static(publicDir));
+  app.use(express.static(publicDir, staticOptions));
 }
 
 // Tighten CSP for MIDI editor pages (no external scripts/styles required)
@@ -514,6 +525,215 @@ app.get('/api/projects/:projectId', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Get project error:', error);
     res.status(500).json({ message: 'Failed to get project' });
+  }
+});
+
+// Invite user to project
+app.post('/api/projects/:projectId/invite', verifyToken, async (req, res) => {
+  const { projectId } = req.params;
+  const { email, role } = req.body;
+  const inviterId = req.user.sub;
+
+  if (!email || !role) {
+    return res.status(400).json({ message: 'Email and role are required' });
+  }
+
+  // 1. Find the user by email to get their userId
+  let userId;
+  try {
+    const userResult = await docClient.send(new QueryCommand({
+      TableName: USERS_TABLE,
+      IndexName: 'email-index', // Assumes a GSI on the email field
+      KeyConditionExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email
+      }
+    }));
+
+    if (!userResult.Items || userResult.Items.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    userId = userResult.Items[0].userId;
+  } catch (error) {
+    // Handle potential error if the email-index GSI doesn't exist
+    if (error.name === 'ValidationException') {
+      // Fallback to a scan if GSI is not available
+      try {
+        const scanResult = await docClient.send(new ScanCommand({
+          TableName: USERS_TABLE,
+          FilterExpression: 'email = :email',
+          ExpressionAttributeValues: {
+            ':email': email
+          }
+        }));
+        if (!scanResult.Items || scanResult.Items.length === 0) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+        userId = scanResult.Items[0].userId;
+      } catch (scanError) {
+        console.error('Error finding user by email (scan fallback):', scanError);
+        return res.status(500).json({ message: 'Failed to find user' });
+      }
+    } else {
+      console.error('Error finding user by email:', error);
+      return res.status(500).json({ message: 'Failed to find user' });
+    }
+  }
+
+
+  // 2. Add the user to the collaborators table
+  try {
+    await docClient.send(new PutCommand({
+      TableName: COLLABORATORS_TABLE,
+      Item: {
+        projectId,
+        userId,
+        role, // 'editor' or 'viewer'
+        addedAt: new Date().toISOString(),
+        addedBy: inviterId
+      },
+      ConditionExpression: 'attribute_not_exists(projectId) AND attribute_not_exists(userId)' // Prevent duplicates
+    }));
+
+    // 3. Optionally, increment the collaboratorCount in the projects table
+    await docClient.send(new UpdateCommand({
+        TableName: PROJECTS_TABLE,
+        Key: { projectId },
+        UpdateExpression: 'ADD collaboratorCount :inc',
+        ExpressionAttributeValues: {
+            ':inc': 1
+        }
+    }));
+
+    res.json({ message: 'User invited successfully' });
+  } catch (error) {
+    if (error.name === 'ConditionalCheckFailedException') {
+        return res.status(409).json({ message: 'User is already a collaborator' });
+    }
+    console.error('Invite user error:', error);
+    res.status(500).json({ message: 'Failed to invite user' });
+  }
+});
+
+// Get project collaborators
+app.get('/api/projects/:projectId/collaborators', verifyToken, async (req, res) => {
+  const { projectId } = req.params;
+
+  try {
+    const collaboratorsResult = await docClient.send(new QueryCommand({
+      TableName: COLLABORATORS_TABLE,
+      KeyConditionExpression: 'projectId = :projectId',
+      ExpressionAttributeValues: {
+        ':projectId': projectId
+      }
+    }));
+
+    const collaborators = await Promise.all(
+      collaboratorsResult.Items.map(async (collab) => {
+        const userResult = await docClient.send(new GetCommand({
+          TableName: USERS_TABLE,
+          Key: { userId: collab.userId }
+        }));
+        return {
+          userId: collab.userId,
+          email: userResult.Item ? userResult.Item.email : 'Unknown',
+          role: collab.role
+        };
+      })
+    );
+
+    res.json(collaborators);
+  } catch (error) {
+    console.error('Get collaborators error:', error);
+    res.status(500).json({ message: 'Failed to get collaborators' });
+  }
+});
+
+// Remove collaborator from project
+app.delete('/api/projects/:projectId/collaborators/:userId', verifyToken, async (req, res) => {
+  const { projectId, userId } = req.params;
+  const requesterId = req.user.sub;
+
+  try {
+    // 1. Verify that the requester is the project owner
+    const projectResult = await docClient.send(new GetCommand({
+      TableName: PROJECTS_TABLE,
+      Key: { projectId }
+    }));
+
+    if (!projectResult.Item) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    if (projectResult.Item.ownerId !== requesterId) {
+      return res.status(403).json({ message: 'Only the project owner can remove collaborators' });
+    }
+
+    // 2. Delete the collaborator entry
+    await docClient.send(new DeleteCommand({
+      TableName: COLLABORATORS_TABLE,
+      Key: { projectId, userId }
+    }));
+
+    // 3. Decrement the collaboratorCount in the projects table
+    await docClient.send(new UpdateCommand({
+      TableName: PROJECTS_TABLE,
+      Key: { projectId },
+      UpdateExpression: 'ADD collaboratorCount :dec',
+      ExpressionAttributeValues: {
+        ':dec': -1
+      }
+    }));
+
+    res.json({ message: 'Collaborator removed successfully' });
+  } catch (error) {
+    console.error('Remove collaborator error:', error);
+    res.status(500).json({ message: 'Failed to remove collaborator' });
+  }
+});
+
+// Update collaborator role
+app.put('/api/projects/:projectId/collaborators/:userId', verifyToken, async (req, res) => {
+  const { projectId, userId } = req.params;
+  const { role } = req.body;
+  const requesterId = req.user.sub;
+
+  if (!role) {
+    return res.status(400).json({ message: 'Role is required' });
+  }
+
+  try {
+    // 1. Verify that the requester is the project owner
+    const projectResult = await docClient.send(new GetCommand({
+      TableName: PROJECTS_TABLE,
+      Key: { projectId }
+    }));
+
+    if (!projectResult.Item) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    if (projectResult.Item.ownerId !== requesterId) {
+      return res.status(403).json({ message: 'Only the project owner can update collaborators' });
+    }
+
+    // 2. Update the collaborator's role
+    await docClient.send(new UpdateCommand({
+      TableName: COLLABORATORS_TABLE,
+      Key: { projectId, userId },
+      UpdateExpression: 'SET #role = :role',
+      ExpressionAttributeNames: {
+        '#role': 'role'
+      },
+      ExpressionAttributeValues: {
+        ':role': role
+      }
+    }));
+
+    res.json({ message: 'Collaborator role updated successfully' });
+  } catch (error) {
+    console.error('Update collaborator error:', error);
+    res.status(500).json({ message: 'Failed to update collaborator role' });
   }
 });
 

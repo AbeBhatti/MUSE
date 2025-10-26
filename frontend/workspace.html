@@ -17,14 +17,10 @@
     })();
   </script>
 
-  <!-- React and ReactDOM from CDN (UMD builds) -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-
   <!-- Socket.IO client served by backend -->
   <script src="/socket.io/socket.io.js"></script>
   <!-- Lightweight collab client wrapper -->
-  <script src="collab-client.js"></script>
+  <script src="/collab-client.js"></script>
 
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
@@ -56,19 +52,9 @@
   </style>
 </head>
 <body class="bg-zinc-950">
-  <!-- Root element for React app -->
   <div id="root"></div>
 
-  <!-- Babel Standalone for JSX transformation (must load before JSX scripts) -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="module" src="/src/main.jsx"></script>
 
-  <!-- Load the React component -->
-  <script type="text/babel" src="dashboard.jsx"></script>
-
-  <!-- Render the app -->
-  <script type="text/babel">
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<LoopArranger />);
-  </script>
 </body>
 </html>

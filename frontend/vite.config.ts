@@ -18,7 +18,12 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'frontend/dist',
+    outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+        input: 'workspace.html',
+        external: ['/socket.io/socket.io.js', '/collab-client.js']
+    }
   },
+  base: '/'
 })

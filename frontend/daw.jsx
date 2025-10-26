@@ -1,5 +1,5 @@
-// Use global React from UMD build when embedded via script tags
-const { useState, useEffect, useRef, useMemo, useCallback } = React;
+// Import React for ES modules
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 
 /**
  * Loop Arranger (Pattern Sequencer)
@@ -1367,6 +1367,177 @@ function TimelinePanel({
   );
 }
 
+/**
+ * @param {{ onClose: () => void, projectId: string }} props
+ */
+function ShareModal({ onClose, projectId }) {
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('viewer');
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [collaborators, setCollaborators] = useState([]);
+
+  const fetchCollaborators = async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/collaborators`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('idToken')}`
+        }
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch collaborators.');
+      }
+      setCollaborators(data);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  useEffect(() => {
+    if (projectId) {
+      fetchCollaborators();
+    }
+  }, [projectId]);
+
+  const handleInvite = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/invite`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('idToken')}`
+        },
+        body: JSON.stringify({ email, role })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to invite user.');
+      }
+
+      setSuccess(`Successfully invited ${email}.`);
+      setEmail('');
+      fetchCollaborators(); // Refresh collaborator list
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleRemoveCollaborator = async (userId) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/collaborators/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('idToken')}`
+        }
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to remove collaborator.');
+      }
+      fetchCollaborators();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleRoleChange = async (userId, newRole) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/collaborators/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('idToken')}`
+        },
+        body: JSON.stringify({ role: newRole })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update role.');
+      }
+      fetchCollaborators();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-zinc-800 rounded-lg shadow-xl w-full max-w-md p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Share Project</h2>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white">&times;</button>
+        </div>
+        <form onSubmit={handleInvite}>
+          <div className="mb-4">
+            <label htmlFor="email" className="block text-sm font-medium text-zinc-300 mb-1">Email Address</label>
+            <input
+              type="email"
+              id="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-sm"
+              required
+            />
+          </div>
+          <div className="mb-4">
+            <label htmlFor="role" className="block text-sm font-medium text-zinc-300 mb-1">Role</label>
+            <select
+              id="role"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="w-full bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-sm"
+            >
+              <option value="viewer">Viewer</option>
+              <option value="editor">Editor</option>
+            </select>
+          </div>
+          {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+          {success && <p className="text-green-500 text-sm mb-4">{success}</p>}
+          <div className="flex justify-end">
+            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500">Send Invite</button>
+          </div>
+        </form>
+        <div className="mt-6">
+          <h3 className="text-lg font-bold mb-2">Collaborators</h3>
+          <ul className="space-y-2">
+            {collaborators.map((collab) => (
+              <li key={collab.userId} className="flex justify-between items-center bg-zinc-700 p-2 rounded">
+                <div>
+                  <p className="text-sm font-medium">{collab.email}</p>
+                  <p className="text-xs text-zinc-400">{collab.role}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={collab.role}
+                    onChange={(e) => handleRoleChange(collab.userId, e.target.value)}
+                    className="bg-zinc-600 border border-zinc-500 rounded px-2 py-1 text-xs"
+                  >
+                    <option value="viewer">Viewer</option>
+                    <option value="editor">Editor</option>
+                  </select>
+                  <button
+                    onClick={() => handleRemoveCollaborator(collab.userId)}
+                    className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-500"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- Main App Component ---
 
 function LoopArranger() {
@@ -1386,6 +1557,16 @@ function LoopArranger() {
   const [selectedClipId, setSelectedClipId] = useState(null);
   /** @type {[ClipboardClip | null, React.Dispatch<React.SetStateAction<ClipboardClip | null>>]} */
   const [clipboard, setClipboard] = useState(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [projectId, setProjectId] = useState(null);
+
+  useEffect(() => {
+    const pathParts = window.location.pathname.split('/');
+    const projId = pathParts[pathParts.length - 1];
+    if (projId) {
+      setProjectId(projId);
+    }
+  }, []);
 
   const patternsRef = useRef(patterns);
   const clipsRef = useRef(clips);
@@ -1593,6 +1774,7 @@ function LoopArranger() {
   return (
     <div className="w-full min-h-screen bg-zinc-950 text-zinc-100 font-sans p-4">
       
+      {showShareModal && <ShareModal onClose={() => setShowShareModal(false)} projectId={projectId} />}
       {renderSequencer()}
       
       <div className="max-w-7xl mx-auto">
@@ -1626,6 +1808,14 @@ function LoopArranger() {
             title="Toggle Loop"
           >
             Loop: {isLooping ? 'ON' : 'OFF'}
+          </button>
+
+          <button
+            onClick={() => setShowShareModal(true)}
+            className="px-4 py-2 rounded-lg border transition-all text-sm font-medium bg-blue-600 border-blue-500 text-white hover:bg-blue-500"
+            title="Share Project"
+          >
+            Share
           </button>
 
           <div className="ml-4 flex items-center gap-4">

@@ -1,5 +1,5 @@
-// Use global React from UMD build when embedded via script tags
-const { useState, useEffect, useRef, useMemo, useCallback } = React;
+// Import React for ES modules
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 
 /**
  * Loop Arranger (Pattern Sequencer)
@@ -2141,6 +2141,121 @@ function TimelinePanel({
 
 // --- Main App Component ---
 
+function Modal({ onExit, children }) {
+  return (
+    <div 
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+      onClick={onExit}
+    >
+      <div onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ShareModal({ onExit, projectId }) {
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('editor');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+
+  const handleInvite = async (e) => {
+    e.preventDefault();
+    if (!email || !projectId) {
+      setError('Email and project ID are required.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const token = localStorage.getItem('idToken');
+      const response = await fetch(`${API_BASE}/api/projects/${projectId}/invite`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ email, role })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.message || 'Failed to invite user.');
+      }
+
+      setSuccess(`Successfully invited ${email} as ${role}.`);
+      setEmail('');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 bg-zinc-800 rounded-xl shadow-2xl w-full max-w-lg text-white">
+      <h2 className="text-2xl font-bold mb-4 text-blue-400">Share Project</h2>
+      <form onSubmit={handleInvite}>
+        <div className="mb-4">
+          <label htmlFor="email" className="block text-sm font-medium mb-2">User's Email:</label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full text-sm text-zinc-300 bg-zinc-700 rounded-lg px-3 py-2"
+            required
+          />
+        </div>
+        <div className="mb-4">
+          <label htmlFor="role" className="block text-sm font-medium mb-2">Role:</label>
+          <select
+            id="role"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className="w-full text-sm text-zinc-300 bg-zinc-700 rounded-lg px-3 py-2"
+          >
+            <option value="editor">Editor</option>
+            <option value="viewer">Viewer</option>
+          </select>
+        </div>
+        {error && (
+          <div className="bg-red-900/50 border border-red-500 p-2 rounded text-sm mb-4">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="bg-green-900/50 border border-green-500 p-2 rounded text-sm mb-4">
+            {success}
+          </div>
+        )}
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onExit}
+            className="px-4 py-2 bg-zinc-600 rounded-lg hover:bg-zinc-700 transition"
+            disabled={isLoading}
+          >
+            Close
+          </button>
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-400 transition disabled:opacity-50"
+          >
+            {isLoading ? 'Sending...' : 'Send Invite'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function LoopArranger() {
   const [bpm, setBpm] = useState(DEFAULT_BPM);
   const [collabStatus, setCollabStatus] = useState('disconnected');
@@ -2149,6 +2264,7 @@ function LoopArranger() {
   const [metronomeOn, setMetronomeOn] = useState(false);
   /** @type {[View, React.Dispatch<React.SetStateAction<View>>]} */
   const [view, setView] = useState({ type: "library" });
+  const [showShareModal, setShowShareModal] = useState(false);
   /** @type {[Pattern[], React.Dispatch<React.SetStateAction<Pattern[]>>]} */
   const [patterns, setPatterns] = useState([]);
   /** @type {[TimelineClip[], React.Dispatch<React.SetStateAction<TimelineClip[]>>]} */
@@ -2457,10 +2573,26 @@ function LoopArranger() {
   return (
     <div className="w-full min-h-screen bg-zinc-950 text-zinc-100 font-sans p-4">
       
-      {renderSequencer()}
+      {showShareModal && (
+        <Modal onExit={() => setShowShareModal(false)}>
+          <ShareModal 
+            onExit={() => setShowShareModal(false)} 
+            projectId={activeProject ? activeProject.projectId : null}
+          />
+        </Modal>
+      )}
       
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-extrabold text-lime-400 mb-6">Loop Arranger</h1>
+        <div className="flex-1 flex items-center">
+        <h1 className="text-2xl font-bold text-white">VYBE</h1>
+        <span className="ml-3 text-xs bg-zinc-700 px-2 py-1 rounded-full">DAW</span>
+        <button
+          onClick={() => setShowShareModal(true)}
+          className="ml-4 px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600"
+        >
+          Share
+        </button>
+      </div>
         
         {/* Transport Header */}
         <div className="flex flex-wrap items-center gap-4 mb-4 p-3 bg-zinc-900 rounded-lg shadow-inner border border-zinc-800">
@@ -2572,7 +2704,24 @@ function LoopArranger() {
           />
         </div>
         
+        {showShareModal && (
+          <Modal onExit={() => setShowShareModal(false)}>
+            <ShareModal 
+              onExit={() => setShowShareModal(false)} 
+              projectId={activeProject ? activeProject.projectId : null}
+            />
+          </Modal>
+        )}
+        
       </div>
     </div>
   );
 }
+
+// Export the main component
+function App() {
+  return <LoopArranger />;
+}
+
+// Export for ES modules
+export default App;
