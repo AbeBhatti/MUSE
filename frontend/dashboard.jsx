@@ -1686,12 +1686,37 @@ function LoopArranger() {
     }
   };
   
+  // Reference to the modal container
+  const transcribeModalRef = useRef(null);
+  
+  // Handle transcription modal
+  useEffect(() => {
+    // Initialize or clean up SimpleTranscriber when view type changes
+    if (view.type === "transcribe") {
+      // Give time for the DOM to update with the modal container
+      setTimeout(() => {
+        if (transcribeModalRef.current && window.SimpleTranscriber) {
+          console.log('[LoopArranger] Initializing SimpleTranscriber');
+          const transcriber = new window.SimpleTranscriber();
+          transcriber.init(
+            transcribeModalRef.current, 
+            onSavePattern, 
+            () => setView({type: 'library'})
+          );
+        } else {
+          console.error('[LoopArranger] Could not initialize SimpleTranscriber. Missing dependencies.');
+        }
+      }, 10);
+    }
+  }, [view.type]);
+
   const renderSequencer = () => {
     if (view.type === "library") return null;
     
     let component;
     if (view.type === "transcribe") {
-        component = <AudioTranscriber onSave={onSavePattern} onExit={() => setView({type: 'library'})} />;
+      // Return an empty container that SimpleTranscriber will populate
+      component = <div id="transcribe-modal-container" ref={transcribeModalRef}></div>;
     } else if (view.type === "sequencer") {
       if (view.instrument === "drums") {
         component = <DrumSequencer onSave={onSavePattern} onExit={() => setView({type: 'library'})} engine={engine} patterns={patterns} />;

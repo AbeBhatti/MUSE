@@ -203,13 +203,6 @@ class SimpleTranscriber {
         throw new Error('onSave handler is missing');
       }
       
-      if (!window.AudioTranscriber) {
-        throw new Error('AudioTranscriber not loaded. Please refresh the page.');
-      }
-
-      const transcriberInstance = new window.AudioTranscriber();
-      await transcriberInstance.init();
-
       console.log('[SimpleTranscriber] Options:', {
         useSeparation: this.options.useSeparation,
         confidenceThreshold: this.options.confidenceThreshold,
@@ -217,14 +210,53 @@ class SimpleTranscriber {
         bpm: this.options.bpm,
         maxBars: this.options.maxBars
       });
-
-      const transcriptionData = await transcriberInstance.transcribeAudio(this.file, {
-        useSeparation: this.options.useSeparation,
-        confidenceThreshold: this.options.confidenceThreshold,
-        minNoteDuration: this.options.minNoteDuration,
-        bpm: this.options.bpm,
-        maxBars: this.options.maxBars
+      
+      // Call the backend API directly instead of using AudioTranscriber
+      const formData = new FormData();
+      formData.append('file', this.file);
+      
+      // Choose endpoint based on separation option
+      const endpoint = this.options.useSeparation ? '/separate' : '/upload';
+      console.log('[SimpleTranscriber] Using endpoint:', endpoint);
+      
+      if (this.options.useSeparation) {
+        formData.append('use_demucs', 'true');
+      } else {
+        formData.append('onset_threshold', this.options.confidenceThreshold.toString());
+        formData.append('frame_threshold', '0.3');
+        formData.append('min_note_len', this.options.minNoteDuration.toString());
+        formData.append('melodia_trick', 'true');
+      }
+      
+      // Make direct API call to backend
+      console.log('[SimpleTranscriber] Sending request to:', window.location.origin + endpoint);
+      const response = await fetch(window.location.origin + endpoint, {
+        method: 'POST',
+        body: formData
       });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Transcription API error (${response.status}): ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[SimpleTranscriber] Received API response:', data);
+      
+      // Transform the backend response to match expected format
+      let transcriptionData = data;
+      
+      // Format data appropriately based on endpoint
+      if (endpoint === '/upload' && !transcriptionData.tracks) {
+        transcriptionData = {
+          notes: data.notes || [],
+          audioLengthBars: Math.min(
+            Math.max(1, Math.ceil((data.duration || 0) / (60 / this.options.bpm * 4))),
+            this.options.maxBars
+          ),
+          originalFileName: this.file.name
+        };
+      }
 
       console.log('[SimpleTranscriber] Received transcription data:', {
         hasTracks: !!transcriptionData.tracks,
